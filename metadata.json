@@ -1,0 +1,5 @@
+{
+  "name": "Pidgey Control Tower",
+  "description": "Admin dashboard for the Pidgey greeting card SaaS, featuring member management, egg economy tracking, support ticketing with AI assistance, and artist drop configuration.",
+  "requestFramePermissions": []
+}
