@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { HashRouter, Routes, Route, Link } from 'react-router-dom';
 import { 
   Users, DollarSign, Activity, Egg, Search, Filter, 
-  MoreVertical, CheckCircle, Clock, AlertCircle, Bot, Send, Mail
+  MoreVertical, CheckCircle, Clock, AlertCircle, Bot, Send, Mail, Sparkles, Loader
 } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip, ResponsiveContainer, LineChart, Line 
@@ -12,9 +12,29 @@ import { Layout } from './components/Layout';
 import { MOCK_PROFILES, MOCK_DROPS, MOCK_STAMPS, MOCK_TICKETS } from './constants';
 import { Profile, Ticket, DropStatus, Tier, StampRarity } from './types';
 import { generateTicketReply, analyzeSentiment } from './services/geminiService';
+import { JarvisProvider, useJarvis } from './JarvisContext';
+import { supabase } from './services/supabaseClient';
 
 // --- Dashboard Component ---
 const Dashboard = () => {
+  const { openJarvis } = useJarvis();
+  const [memberCount, setMemberCount] = useState<number | string>('...');
+  
+  useEffect(() => {
+    const fetchStats = async () => {
+        const { count, error } = await supabase
+            .from('profiles')
+            .select('*', { count: 'exact', head: true });
+        
+        if (!error && count !== null) {
+            setMemberCount(count);
+        } else {
+            setMemberCount(1240); // Fallback to mock
+        }
+    };
+    fetchStats();
+  }, []);
+  
   const data = [
     { name: 'Mon', revenue: 4000, eggs: 2400 },
     { name: 'Tue', revenue: 3000, eggs: 1398 },
@@ -27,13 +47,22 @@ const Dashboard = () => {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Control Tower Overview</h1>
+      <div className="flex justify-between items-center">
+        <h1 className="text-2xl font-bold">Control Tower Overview</h1>
+        <button 
+            onClick={() => openJarvis("Analyze the current system health and show me the top priorities for today.")}
+            className="flex items-center gap-2 px-4 py-2 bg-pidgey-accent/10 border border-pidgey-accent/30 text-pidgey-accent rounded-lg text-sm hover:bg-pidgey-accent/20 transition"
+        >
+            <Sparkles size={16} />
+            <span>Ask Jarvis: Triage Today</span>
+        </button>
+      </div>
       
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {[
           { label: 'Total Revenue', value: '$12,450', icon: DollarSign, color: 'text-green-400' },
-          { label: 'Active Members', value: '1,240', icon: Users, color: 'text-blue-400' },
+          { label: 'Active Members', value: memberCount, icon: Users, color: 'text-blue-400' },
           { label: 'Eggs Hatched', value: '8,302', icon: Egg, color: 'text-yellow-400' },
           { label: 'Pending Tickets', value: '14', icon: Activity, color: 'text-red-400' },
         ].map((stat, idx) => (
@@ -51,8 +80,13 @@ const Dashboard = () => {
 
       {/* Main Chart */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 bg-pidgey-panel border border-pidgey-border rounded-xl p-6">
-          <h3 className="text-lg font-bold mb-6">Revenue vs Egg Hatching</h3>
+        <div className="lg:col-span-2 bg-pidgey-panel border border-pidgey-border rounded-xl p-6 relative">
+          <div className="flex justify-between items-center mb-6">
+             <h3 className="text-lg font-bold">Revenue vs Egg Hatching</h3>
+             <button onClick={() => openJarvis("Explain the revenue trend for this week. Why was Friday low?")} className="text-xs text-pidgey-muted hover:text-pidgey-accent flex items-center gap-1">
+                <Bot size={12} /> Explain Trend
+             </button>
+          </div>
           <div className="h-80">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={data}>
@@ -91,7 +125,39 @@ const Dashboard = () => {
 
 // --- Members Component ---
 const Members = () => {
+    const [profiles, setProfiles] = useState<Profile[]>([]);
+    const [loading, setLoading] = useState(true);
     const [filter, setFilter] = useState('');
+    
+    useEffect(() => {
+        const fetchMembers = async () => {
+            setLoading(true);
+            const { data, error } = await supabase
+                .from('profiles')
+                .select('*')
+                .order('created_at', { ascending: false });
+            
+            if (error) {
+                console.error("Error fetching profiles:", error);
+                setProfiles(MOCK_PROFILES); // Fallback
+            } else if (data) {
+                // Map DB data to match Profile interface if needed, mostly it matches.
+                // Avatar is virtual, so we mock it for display
+                const mappedProfiles = data.map((p: any, idx: number) => ({
+                    ...p,
+                    avatar_url: `https://picsum.photos/seed/${p.id}/200`
+                }));
+                setProfiles(mappedProfiles);
+            }
+            setLoading(false);
+        };
+        fetchMembers();
+    }, []);
+
+    const filteredProfiles = profiles.filter(p => 
+        (p.full_name?.toLowerCase() || '').includes(filter.toLowerCase()) || 
+        (p.email?.toLowerCase() || '').includes(filter.toLowerCase())
+    );
     
     return (
         <div className="space-y-6">
@@ -124,60 +190,72 @@ const Members = () => {
                     </button>
                 </div>
 
-                <div className="overflow-x-auto">
-                    <table className="w-full text-left">
-                        <thead className="bg-pidgey-dark/50 text-xs uppercase text-pidgey-muted font-semibold">
-                            <tr>
-                                <th className="px-6 py-4">Member</th>
-                                <th className="px-6 py-4">Role</th>
-                                <th className="px-6 py-4">Status</th>
-                                <th className="px-6 py-4">Balance (Egg)</th>
-                                <th className="px-6 py-4">Last Seen</th>
-                                <th className="px-6 py-4"></th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-pidgey-border">
-                            {MOCK_PROFILES.map((profile) => (
-                                <tr key={profile.id} className="hover:bg-pidgey-dark/30 transition-colors">
-                                    <td className="px-6 py-4">
-                                        <div className="flex items-center gap-3">
-                                            <img src={profile.avatar_url} alt="" className="w-10 h-10 rounded-full bg-pidgey-border" />
-                                            <div>
-                                                <div className="font-medium text-pidgey-text">{profile.full_name}</div>
-                                                <div className="text-xs text-pidgey-muted">{profile.email}</div>
-                                            </div>
-                                        </div>
-                                    </td>
-                                    <td className="px-6 py-4">
-                                        <span className="capitalize text-sm">{profile.role}</span>
-                                    </td>
-                                    <td className="px-6 py-4">
-                                        <span className={`px-2 py-1 rounded text-xs font-bold ${
-                                            profile.tier === Tier.PRO ? 'bg-purple-500/20 text-purple-300' : 
-                                            profile.tier === Tier.PREMIUM ? 'bg-blue-500/20 text-blue-300' : 'bg-slate-700 text-slate-300'
-                                        }`}>
-                                            {profile.tier}
-                                        </span>
-                                    </td>
-                                    <td className="px-6 py-4">
-                                        <div className="flex gap-2 text-xs">
-                                            <span title="Standard" className="bg-slate-700 px-1.5 py-0.5 rounded text-slate-300">{profile.egg_balance.standard} S</span>
-                                            <span title="Premium" className="bg-yellow-600/20 px-1.5 py-0.5 rounded text-yellow-500">{profile.egg_balance.premium} P</span>
-                                            <span title="Mystery" className="bg-pink-600/20 px-1.5 py-0.5 rounded text-pink-400">{profile.egg_balance.mystery} M</span>
-                                        </div>
-                                    </td>
-                                    <td className="px-6 py-4 text-sm text-pidgey-muted">
-                                        {new Date(profile.last_seen).toLocaleDateString()}
-                                    </td>
-                                    <td className="px-6 py-4 text-right">
-                                        <button className="text-pidgey-muted hover:text-pidgey-text">
-                                            <MoreVertical size={16} />
-                                        </button>
-                                    </td>
+                <div className="overflow-x-auto min-h-[400px]">
+                    {loading ? (
+                        <div className="flex justify-center items-center h-64 text-pidgey-muted gap-2">
+                            <Loader className="animate-spin" /> Loading members...
+                        </div>
+                    ) : (
+                        <table className="w-full text-left">
+                            <thead className="bg-pidgey-dark/50 text-xs uppercase text-pidgey-muted font-semibold">
+                                <tr>
+                                    <th className="px-6 py-4">Member</th>
+                                    <th className="px-6 py-4">Role</th>
+                                    <th className="px-6 py-4">Status</th>
+                                    <th className="px-6 py-4">Balance (Egg)</th>
+                                    <th className="px-6 py-4">Last Seen</th>
+                                    <th className="px-6 py-4"></th>
                                 </tr>
-                            ))}
-                        </tbody>
-                    </table>
+                            </thead>
+                            <tbody className="divide-y divide-pidgey-border">
+                                {filteredProfiles.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={6} className="px-6 py-8 text-center text-pidgey-muted">
+                                            No members found.
+                                        </td>
+                                    </tr>
+                                ) : filteredProfiles.map((profile) => (
+                                    <tr key={profile.id} className="hover:bg-pidgey-dark/30 transition-colors">
+                                        <td className="px-6 py-4">
+                                            <div className="flex items-center gap-3">
+                                                <img src={profile.avatar_url} alt="" className="w-10 h-10 rounded-full bg-pidgey-border" />
+                                                <div>
+                                                    <div className="font-medium text-pidgey-text">{profile.full_name || 'Unknown'}</div>
+                                                    <div className="text-xs text-pidgey-muted">{profile.email || 'No email'}</div>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <span className="capitalize text-sm">{profile.role}</span>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <span className={`px-2 py-1 rounded text-xs font-bold ${
+                                                profile.tier === Tier.PRO ? 'bg-purple-500/20 text-purple-300' : 
+                                                profile.tier === Tier.PREMIUM ? 'bg-blue-500/20 text-blue-300' : 'bg-slate-700 text-slate-300'
+                                            }`}>
+                                                {profile.tier}
+                                            </span>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <div className="flex gap-2 text-xs">
+                                                <span title="Standard" className="bg-slate-700 px-1.5 py-0.5 rounded text-slate-300">{profile.egg_balance?.standard || 0} S</span>
+                                                <span title="Premium" className="bg-yellow-600/20 px-1.5 py-0.5 rounded text-yellow-500">{profile.egg_balance?.premium || 0} P</span>
+                                                <span title="Mystery" className="bg-pink-600/20 px-1.5 py-0.5 rounded text-pink-400">{profile.egg_balance?.mystery || 0} M</span>
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-4 text-sm text-pidgey-muted">
+                                            {profile.last_seen ? new Date(profile.last_seen).toLocaleDateString() : 'Never'}
+                                        </td>
+                                        <td className="px-6 py-4 text-right">
+                                            <button className="text-pidgey-muted hover:text-pidgey-text">
+                                                <MoreVertical size={16} />
+                                            </button>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    )}
                 </div>
             </div>
         </div>
@@ -186,12 +264,22 @@ const Members = () => {
 
 // --- Drops & Stamps Component ---
 const Drops = () => {
+    const { openJarvis } = useJarvis();
+
     return (
         <div className="space-y-8">
             <section>
                 <div className="flex justify-between items-center mb-4">
                     <h2 className="text-xl font-bold flex items-center gap-2"><Egg className="text-pidgey-accent" /> Active Drops</h2>
-                    <button className="text-sm text-pidgey-accent hover:underline">Manage Drops</button>
+                    <div className="flex gap-3">
+                        <button 
+                            onClick={() => openJarvis("Analyze my active drops and suggest which one I should feature next based on performance.")}
+                            className="text-sm bg-pidgey-panel border border-pidgey-border px-3 py-1.5 rounded-lg hover:border-pidgey-accent flex items-center gap-2 transition"
+                        >
+                            <Sparkles size={14} className="text-purple-400"/> Ask Jarvis: Optimization
+                        </button>
+                        <button className="text-sm text-pidgey-accent hover:underline">Manage Drops</button>
+                    </div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     {MOCK_DROPS.map(drop => (
@@ -394,26 +482,28 @@ const Support = () => {
 // --- App Root Component ---
 const App = () => {
   return (
-    <HashRouter>
-      <Layout>
-        <Routes>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/members" element={<Members />} />
-          <Route path="/drops" element={<Drops />} />
-          <Route path="/support" element={<Support />} />
-          
-          {/* Placeholders for other routes */}
-          <Route path="*" element={
-            <div className="flex flex-col items-center justify-center h-full text-pidgey-muted">
-                <div className="text-6xl mb-4">🚧</div>
-                <h2 className="text-2xl font-bold mb-2">Under Construction</h2>
-                <p>This module is currently being built by the Pidgey engineering flock.</p>
-                <Link to="/" className="mt-6 px-4 py-2 bg-pidgey-panel border border-pidgey-border rounded hover:bg-pidgey-border">Go Home</Link>
-            </div>
-          } />
-        </Routes>
-      </Layout>
-    </HashRouter>
+    <JarvisProvider>
+      <HashRouter>
+        <Layout>
+          <Routes>
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/members" element={<Members />} />
+            <Route path="/drops" element={<Drops />} />
+            <Route path="/support" element={<Support />} />
+            
+            {/* Placeholders for other routes */}
+            <Route path="*" element={
+              <div className="flex flex-col items-center justify-center h-full text-pidgey-muted">
+                  <div className="text-6xl mb-4">🚧</div>
+                  <h2 className="text-2xl font-bold mb-2">Under Construction</h2>
+                  <p>This module is currently being built by the Pidgey engineering flock.</p>
+                  <Link to="/" className="mt-6 px-4 py-2 bg-pidgey-panel border border-pidgey-border rounded hover:bg-pidgey-border">Go Home</Link>
+              </div>
+            } />
+          </Routes>
+        </Layout>
+      </HashRouter>
+    </JarvisProvider>
   );
 };
 

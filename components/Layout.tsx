@@ -1,6 +1,8 @@
 import React from 'react';
-import { LayoutDashboard, Users, Egg, StickyNote, Mail, FolderOpen, Settings, LogOut, Search, Bell } from 'lucide-react';
+import { LayoutDashboard, Users, Egg, StickyNote, Mail, FolderOpen, Settings, LogOut, Search, Bell, Bot } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
+import { JarvisAgent } from './JarvisAgent';
+import { useJarvis } from '../JarvisContext';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -26,10 +28,12 @@ const NavItem = ({ to, icon: Icon, label }: { to: string; icon: any; label: stri
 };
 
 export const Layout: React.FC<LayoutProps> = ({ children }) => {
+  const { openJarvis, isOpen } = useJarvis();
+
   return (
-    <div className="flex h-screen bg-pidgey-dark overflow-hidden text-pidgey-text font-sans">
+    <div className="flex h-screen bg-pidgey-dark overflow-hidden text-pidgey-text font-sans relative">
       {/* Sidebar */}
-      <aside className="w-64 flex-shrink-0 border-r border-pidgey-border flex flex-col bg-pidgey-dark">
+      <aside className="w-64 flex-shrink-0 border-r border-pidgey-border flex flex-col bg-pidgey-dark z-20">
         <div className="p-6 flex items-center gap-3">
             <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-pidgey-accent to-pidgey-secondary flex items-center justify-center">
                 <span className="font-bold text-white text-lg">P</span>
@@ -68,7 +72,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
       </aside>
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 flex flex-col overflow-hidden relative z-10">
         {/* Top Header */}
         <header className="h-16 border-b border-pidgey-border bg-pidgey-dark/95 backdrop-blur flex items-center justify-between px-8 z-10">
           <div className="flex items-center w-96 relative">
@@ -95,7 +99,18 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
         <main className="flex-1 overflow-y-auto p-8">
           {children}
         </main>
+
+        {/* Floating JARVIS Trigger */}
+        <button 
+            onClick={() => openJarvis()}
+            className={`absolute bottom-8 right-8 w-14 h-14 rounded-full bg-gradient-to-r from-pidgey-secondary to-purple-600 shadow-lg shadow-purple-900/50 flex items-center justify-center text-white hover:scale-105 transition-transform z-40 ${isOpen ? 'hidden' : 'flex'}`}
+        >
+            <Bot size={28} />
+        </button>
       </div>
+
+      {/* JARVIS Overlay */}
+      <JarvisAgent />
     </div>
   );
 };

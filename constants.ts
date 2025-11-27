@@ -1,4 +1,4 @@
-import { Profile, Role, Tier, Stamp, StampRarity, Drop, DropStatus, Ticket, TicketStatus, TicketPriority } from './types';
+import { Profile, Role, Tier, Stamp, StampRarity, Drop, DropStatus, Ticket, TicketStatus, TicketPriority, Card, UserTemplate } from './types';
 
 export const MOCK_PROFILES: Profile[] = [
   {
@@ -104,6 +104,34 @@ export const MOCK_DROPS: Drop[] = [
   },
 ];
 
+export const MOCK_CARDS: Card[] = [
+    {
+        id: 'crd_1',
+        owner_id: 'usr_1',
+        data: { template: 'bday_v1', recipient: 'Mom', status: 'delivered' },
+        created_at: '2023-10-20T10:00:00Z',
+        updated_at: '2023-10-20T10:00:00Z',
+    },
+    {
+        id: 'crd_2',
+        owner_id: 'usr_2',
+        data: { template: 'thankyou_v2', recipient: 'Boss', status: 'draft' },
+        created_at: '2023-10-25T14:00:00Z',
+        updated_at: '2023-10-25T14:30:00Z',
+    }
+];
+
+export const MOCK_USER_TEMPLATES: UserTemplate[] = [
+    {
+        id: 'ut_1',
+        owner_id: 'usr_1',
+        template_id: 'tpl_basic',
+        template_data: { color: 'blue', font: 'serif' },
+        created_at: '2023-09-01T00:00:00Z',
+        updated_at: '2023-09-01T00:00:00Z',
+    }
+];
+
 export const MOCK_TICKETS: Ticket[] = [
   {
     id: 'tkt_1',
@@ -144,3 +172,29 @@ export const MOCK_TICKETS: Ticket[] = [
     ]
   }
 ];
+
+// Ops data for Jarvis to analyze
+export const MOCK_OPERATIONAL_STATS = {
+    abandoned_carts: {
+        count: 7,
+        potential_revenue: 850,
+        top_items: ['Pro Subscription', 'Egg Bundle (50)']
+    },
+    system_health: {
+        webhook_failures: 2,
+        api_latency_ms: 45,
+        last_backup: '2023-10-27T04:00:00Z'
+    },
+    artist_alerts: [
+        { artist_id: 'art_2', message: 'Assets missing for "Watercolor Whimsy" drop', severity: 'medium' }
+    ],
+    revenue_trends: [
+        { day: 'Mon', amount: 4000 },
+        { day: 'Tue', amount: 3000 },
+        { day: 'Wed', amount: 2000 },
+        { day: 'Thu', amount: 2780 },
+        { day: 'Fri', amount: 1890 }, // Dip here
+        { day: 'Sat', amount: 2390 },
+        { day: 'Sun', amount: 3490 },
+    ]
+};

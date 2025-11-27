@@ -50,13 +50,13 @@ export interface EggBalance {
 
 export interface Profile {
   id: string;
-  email: string;
-  full_name: string;
-  role: Role;
-  tier: Tier;
-  egg_balance: EggBalance;
-  created_at: string;
-  last_seen: string;
+  email: string | null; // Nullable in DB
+  full_name: string | null; // Nullable in DB
+  role: Role; // text in DB
+  tier: Tier; // text in DB
+  egg_balance: EggBalance; // jsonb
+  created_at: string | null; // timestamptz nullable
+  last_seen: string | null; // timestamptz nullable
   avatar_url?: string; // Virtual field for UI
 }
 
@@ -94,6 +94,23 @@ export interface Drop {
   banner_path: string; // URL
 }
 
+export interface Card {
+  id: string;
+  owner_id: string | null; // text nullable in DB
+  data: any; // JSONB content
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface UserTemplate {
+  id: string;
+  owner_id: string | null; // text nullable in DB
+  template_id: string | null; // text nullable in DB
+  template_data: any;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
 export interface Ticket {
   id: string;
   profile_id: string;
@@ -120,4 +137,11 @@ export interface StatMetric {
   value: string | number;
   change: number; // Percentage
   trend: 'up' | 'down' | 'neutral';
+}
+
+export interface ChatMessage {
+    id: string;
+    role: 'user' | 'assistant';
+    content: string;
+    timestamp: Date;
 }
