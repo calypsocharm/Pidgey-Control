@@ -12,6 +12,30 @@ export interface ListResponse<T> {
   error: any;
 }
 
+// Helper for recursive storage listing
+const listAllFiles = async (bucket: string, path = ''): Promise<any[]> => {
+  const { data, error } = await supabase.storage.from(bucket).list(path);
+  if (error) throw error;
+  
+  let results: any[] = [];
+  for (const item of data || []) {
+    // If id is null, it's typically a folder in Supabase storage
+    if (item.id === null) {
+       const subPath = path ? `${path}/${item.name}` : item.name;
+       const subFiles = await listAllFiles(bucket, subPath);
+       results = [...results, ...subFiles];
+    } else {
+       // It's a file
+       results.push({ 
+           ...item, 
+           // Store the full relative path so we can generate the correct URL
+           fullPath: path ? `${path}/${item.name}` : item.name 
+       });
+    }
+  }
+  return results;
+}
+
 export const AdminService = {
   
   // --- Dashboard Stats (Realtime) ---
@@ -279,12 +303,11 @@ export const AdminService = {
   files: {
     list: async (bucket: string = 'stamps'): Promise<ListResponse<Asset>> => {
         try {
-            console.log(`Fetching files from bucket: ${bucket}`);
-            const { data: files, error } = await supabase.storage.from(bucket).list();
+            console.log(`Fetching files from bucket: ${bucket} (Recursive)`);
             
-            if (error) throw error;
-            
-            console.log(`Found ${files?.length || 0} files in ${bucket}`);
+            // Use recursive helper to find files in subfolders
+            const rawFiles = await listAllFiles(bucket);
+            console.log(`Found ${rawFiles.length} files in ${bucket} (recursive scan)`);
 
             // Helper to determine asset type from bucket
             const getAssetType = (b: string): AssetType => {
@@ -293,20 +316,26 @@ export const AdminService = {
                 return AssetType.IMAGE;
             };
 
-            const realAssets: Asset[] = (files || []).map(file => {
-                 const { data } = supabase.storage.from(bucket).getPublicUrl(file.name);
+            const realAssets: Asset[] = await Promise.all(rawFiles.map(async (file) => {
+                 // Use the full path (including folders) to get the URL
+                 const filePath = file.fullPath || file.name;
+                 
+                 // SECURE ACCESS: Use createSignedUrl instead of getPublicUrl
+                 // This works for PRIVATE buckets if you have the Service Role Key
+                 const { data } = await supabase.storage.from(bucket).createSignedUrl(filePath, 3600); // Valid for 1 hour
+                 
                  return {
-                    id: file.id,
-                    name: file.name,
-                    url: data.publicUrl,
+                    id: file.id || filePath, 
+                    name: filePath, 
+                    url: data?.signedUrl || '', // Fallback empty if sign fails
                     type: getAssetType(bucket),
                     size_kb: Math.round((file.metadata?.size || 0) / 1024),
                     tags: ['uploaded', bucket],
                     usage_count: 0,
                     bucket: bucket,
-                    created_at: file.created_at
+                    created_at: file.created_at || new Date().toISOString()
                  };
-            });
+            }));
 
             return { data: realAssets, count: realAssets.length, error: null };
 
@@ -327,13 +356,13 @@ export const AdminService = {
 
             if (error) throw error;
 
-            // Get URL
-            const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(fileName);
+            // Generate Signed URL for the new upload too
+            const { data: urlData } = await supabase.storage.from(bucket).createSignedUrl(fileName, 3600);
             
             const newAsset: Asset = {
                 id: data.path, // path acts as ID
                 name: file.name,
-                url: urlData.publicUrl,
+                url: urlData?.signedUrl || '',
                 type: bucket === 'stamps' ? AssetType.STAMP_ART : AssetType.IMAGE,
                 size_kb: Math.round(file.size / 1024),
                 tags: ['new', bucket],
@@ -356,35 +385,6 @@ export const AdminService = {
         } catch (e: any) {
             console.error("Delete failed", e);
             return { error: e };
-        }
-    },
-
-    importDefaults: async (bucket: string) => {
-        console.log(`Seeding bucket ${bucket} with defaults...`);
-        try {
-            const defaults = MOCK_ASSETS.filter(a => {
-                if (bucket === 'stamps') return a.type === AssetType.STAMP_ART;
-                if (bucket === 'templates') return a.type === AssetType.CARD_TEMPLATE;
-                return false;
-            });
-            
-            if (defaults.length === 0) return { success: false, message: "No defaults for this bucket" };
-
-            let count = 0;
-            for (const asset of defaults) {
-                // 1. Fetch the image from the external URL
-                const response = await fetch(asset.url);
-                const blob = await response.blob();
-                const file = new File([blob], asset.name, { type: blob.type });
-                
-                // 2. Upload to Supabase
-                const { error } = await supabase.storage.from(bucket).upload(asset.name, file, { upsert: true });
-                if (!error) count++;
-            }
-            return { success: true, count };
-        } catch (e: any) {
-            console.error("Import failed:", e);
-            return { success: false, error: e };
         }
     }
   },
