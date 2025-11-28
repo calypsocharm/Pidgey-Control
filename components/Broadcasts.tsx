@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Megaphone, Calendar, Send, Mail, Smartphone, Bell, Plus, RefreshCw, BarChart2 } from 'lucide-react';
+import { Megaphone, Calendar, Send, Mail, Smartphone, Bell, Plus, RefreshCw, BarChart2, X, Save, Clock, Users } from 'lucide-react';
 import { AdminService } from '../services/adminService';
 import { Broadcast, BroadcastStatus, BroadcastChannel } from '../types';
 
@@ -8,6 +8,10 @@ export const Broadcasts = () => {
     const [broadcasts, setBroadcasts] = useState<Broadcast[]>([]);
     const [loading, setLoading] = useState(true);
     const [filter, setFilter] = useState('all');
+
+    // Modal State
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [currentBroadcast, setCurrentBroadcast] = useState<Partial<Broadcast>>({});
 
     useEffect(() => {
         fetchData();
@@ -18,6 +22,41 @@ export const Broadcasts = () => {
         const { data } = await AdminService.broadcasts.list();
         setBroadcasts(data);
         setLoading(false);
+    };
+
+    const handleNewBroadcast = () => {
+        setCurrentBroadcast({
+            name: '',
+            subject: '',
+            channels: [BroadcastChannel.EMAIL],
+            audience_segment: 'All Active Users',
+            status: BroadcastStatus.DRAFT,
+            audience_size: 0
+        });
+        setIsModalOpen(true);
+    };
+
+    const handleSave = async () => {
+        if (!currentBroadcast.name || !currentBroadcast.subject) return alert("Name and Subject required");
+
+        const { data, error } = await AdminService.broadcasts.create(currentBroadcast);
+        
+        if (error) {
+            alert("Failed to create broadcast");
+        } else {
+            // Optimistically update list
+            if (data) setBroadcasts(prev => [data, ...prev]);
+            setIsModalOpen(false);
+        }
+    };
+
+    const toggleChannel = (channel: BroadcastChannel) => {
+        const currentChannels = currentBroadcast.channels || [];
+        if (currentChannels.includes(channel)) {
+            setCurrentBroadcast({ ...currentBroadcast, channels: currentChannels.filter(c => c !== channel) });
+        } else {
+            setCurrentBroadcast({ ...currentBroadcast, channels: [...currentChannels, channel] });
+        }
     };
 
     const getStatusColor = (status: BroadcastStatus) => {
@@ -48,7 +87,10 @@ export const Broadcasts = () => {
                     </div>
                     <h1 className="text-2xl font-bold">Broadcasts</h1>
                 </div>
-                <button className="flex items-center gap-2 px-4 py-2 bg-pidgey-secondary text-white font-bold rounded-lg hover:bg-purple-600 transition">
+                <button 
+                    onClick={handleNewBroadcast}
+                    className="flex items-center gap-2 px-4 py-2 bg-pidgey-secondary text-white font-bold rounded-lg hover:bg-purple-600 transition"
+                >
                     <Plus size={18} /> New Broadcast
                 </button>
             </div>
@@ -155,6 +197,107 @@ export const Broadcasts = () => {
                     </table>
                 </div>
             </div>
+
+            {/* Broadcast Modal */}
+            {isModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+                    <div className="bg-pidgey-panel border border-pidgey-border rounded-xl w-full max-w-2xl shadow-2xl p-6 animate-in zoom-in-95 duration-200">
+                        <div className="flex justify-between items-center mb-6 border-b border-pidgey-border pb-4">
+                            <div>
+                                <h2 className="text-xl font-bold flex items-center gap-2">
+                                    <Megaphone size={20} className="text-pidgey-secondary" />
+                                    New Broadcast
+                                </h2>
+                                <p className="text-xs text-pidgey-muted">Create a new message blast to your users.</p>
+                            </div>
+                            <button onClick={() => setIsModalOpen(false)} className="text-pidgey-muted hover:text-white"><X size={20}/></button>
+                        </div>
+
+                        <div className="space-y-6">
+                            <div>
+                                <label className="block text-xs font-bold text-pidgey-muted uppercase mb-1">Internal Name</label>
+                                <input 
+                                    className="w-full bg-pidgey-dark border border-pidgey-border rounded-lg p-2.5 text-white focus:border-pidgey-secondary outline-none"
+                                    value={currentBroadcast.name}
+                                    onChange={e => setCurrentBroadcast({...currentBroadcast, name: e.target.value})}
+                                    placeholder="e.g. October Newsletter"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-bold text-pidgey-muted uppercase mb-1">Subject Line</label>
+                                <input 
+                                    className="w-full bg-pidgey-dark border border-pidgey-border rounded-lg p-2.5 text-white focus:border-pidgey-secondary outline-none"
+                                    value={currentBroadcast.subject}
+                                    onChange={e => setCurrentBroadcast({...currentBroadcast, subject: e.target.value})}
+                                    placeholder="👋 Hey there! Check out what's new..."
+                                />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-xs font-bold text-pidgey-muted uppercase mb-2">Channels</label>
+                                    <div className="flex gap-2">
+                                        {[BroadcastChannel.EMAIL, BroadcastChannel.PUSH, BroadcastChannel.SMS].map(ch => (
+                                            <button 
+                                                key={ch}
+                                                onClick={() => toggleChannel(ch)}
+                                                className={`p-2 rounded border flex items-center gap-2 text-sm font-bold transition-all ${
+                                                    currentBroadcast.channels?.includes(ch)
+                                                    ? 'bg-pidgey-secondary text-white border-pidgey-secondary'
+                                                    : 'bg-pidgey-dark border-pidgey-border text-pidgey-muted hover:border-pidgey-secondary'
+                                                }`}
+                                            >
+                                                <ChannelIcon channel={ch} /> {ch}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-pidgey-muted uppercase mb-1">Audience Segment</label>
+                                    <div className="relative">
+                                        <Users className="absolute left-3 top-1/2 -translate-y-1/2 text-pidgey-muted" size={16} />
+                                        <select 
+                                            className="w-full bg-pidgey-dark border border-pidgey-border rounded-lg pl-9 pr-4 py-2.5 text-white focus:border-pidgey-secondary outline-none appearance-none"
+                                            value={currentBroadcast.audience_segment}
+                                            onChange={e => setCurrentBroadcast({...currentBroadcast, audience_segment: e.target.value})}
+                                        >
+                                            <option>All Active Users</option>
+                                            <option>Paid Subscribers (Pro/Premium)</option>
+                                            <option>Churn Risk (Inactive 30d)</option>
+                                            <option>New Users (Last 7d)</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-bold text-pidgey-muted uppercase mb-1">Schedule (Optional)</label>
+                                <div className="relative">
+                                    <Clock className="absolute left-3 top-1/2 -translate-y-1/2 text-pidgey-muted" size={16} />
+                                    <input 
+                                        type="datetime-local"
+                                        className="w-full bg-pidgey-dark border border-pidgey-border rounded-lg pl-9 pr-4 py-2.5 text-white focus:border-pidgey-secondary outline-none"
+                                        value={currentBroadcast.scheduled_at ? currentBroadcast.scheduled_at.substring(0, 16) : ''}
+                                        onChange={e => setCurrentBroadcast({...currentBroadcast, scheduled_at: new Date(e.target.value).toISOString(), status: BroadcastStatus.SCHEDULED})}
+                                    />
+                                </div>
+                                <p className="text-[10px] text-pidgey-muted mt-1">Leave blank to save as Draft.</p>
+                            </div>
+
+                            <div className="pt-4 border-t border-pidgey-border flex justify-end gap-3">
+                                <button onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-sm font-bold text-pidgey-muted hover:text-white transition">Cancel</button>
+                                <button 
+                                    onClick={handleSave}
+                                    className="px-6 py-2 bg-pidgey-secondary text-white font-bold rounded-lg hover:bg-purple-600 transition flex items-center gap-2"
+                                >
+                                    <Save size={18} /> {currentBroadcast.scheduled_at ? 'Schedule' : 'Save Draft'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

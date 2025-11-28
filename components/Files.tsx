@@ -1,12 +1,13 @@
 
-import React, { useState, useEffect } from 'react';
-import { FolderOpen, Image as ImageIcon, FileText, Grid, List, Filter, Download, Trash2, Search, Upload, Sparkles } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { FolderOpen, Image as ImageIcon, FileText, Grid, List, Download, Trash2, Search, Upload, Sparkles, Loader } from 'lucide-react';
 import { AdminService } from '../services/adminService';
 import { generateTagsForAsset } from '../services/geminiService';
 import { Asset, AssetType } from '../types';
+import { useSafeMode } from '../SafeModeContext';
 
 // Fix: Extract FileCard and type it as React.FC to allow 'key' prop without TS error
-const FileCard: React.FC<{ file: Asset, onAutoTag: (file: Asset) => void, isTagging: boolean }> = ({ file, onAutoTag, isTagging }) => (
+const FileCard: React.FC<{ file: Asset, onAutoTag: (file: Asset) => void, isTagging: boolean, onDelete: (file: Asset) => void, isSafeMode: boolean }> = ({ file, onAutoTag, isTagging, onDelete, isSafeMode }) => (
     <div className="group bg-pidgey-panel border border-pidgey-border rounded-xl overflow-hidden hover:border-pidgey-muted transition-colors">
         <div className="aspect-square bg-pidgey-dark relative overflow-hidden flex items-center justify-center p-4">
             {file.type === AssetType.IMAGE || file.type === AssetType.STAMP_ART || file.type === AssetType.ICON || file.type === AssetType.CARD_TEMPLATE ? (
@@ -24,8 +25,13 @@ const FileCard: React.FC<{ file: Asset, onAutoTag: (file: Asset) => void, isTagg
                 >
                     <Sparkles size={18} className={isTagging ? 'animate-spin' : ''} />
                 </button>
-                <button className="p-2 bg-white/10 hover:bg-white/20 rounded-full text-white backdrop-blur"><Download size={18}/></button>
-                <button className="p-2 bg-red-500/20 hover:bg-red-500/40 rounded-full text-red-200 backdrop-blur"><Trash2 size={18}/></button>
+                <a href={file.url} target="_blank" rel="noreferrer" className="p-2 bg-white/10 hover:bg-white/20 rounded-full text-white backdrop-blur"><Download size={18}/></a>
+                <button 
+                    onClick={() => onDelete(file)}
+                    className={`p-2 rounded-full backdrop-blur transition-colors ${isSafeMode ? 'bg-red-500/20 text-red-300 hover:bg-red-500/40' : 'bg-red-600 text-white hover:bg-red-700'}`}
+                >
+                    <Trash2 size={18}/>
+                </button>
             </div>
         </div>
         <div className="p-3">
@@ -35,7 +41,7 @@ const FileCard: React.FC<{ file: Asset, onAutoTag: (file: Asset) => void, isTagg
             </div>
             <div className="flex justify-between items-center mt-2 text-xs text-pidgey-muted">
                 <span>{file.size_kb} KB</span>
-                <span className="bg-pidgey-dark px-1.5 py-0.5 rounded text-[10px]">{file.usage_count} uses</span>
+                <span className="bg-pidgey-dark px-1.5 py-0.5 rounded text-[10px]">{new Date(file.created_at).toLocaleDateString()}</span>
             </div>
             <div className="mt-2 flex flex-wrap gap-1">
                 {file.tags.map(tag => (
@@ -46,20 +52,33 @@ const FileCard: React.FC<{ file: Asset, onAutoTag: (file: Asset) => void, isTagg
     </div>
 );
 
+const BUCKETS = [
+    { id: 'stamps', label: 'Stamps' },
+    { id: 'templates', label: 'Templates' },
+    { id: 'admin_files', label: 'Admin Files' },
+    { id: 'cards', label: 'Cards' },
+    { id: 'avatars', label: 'User Avatars' },
+    { id: 'attachments', label: 'Attachments' },
+];
+
 export const Files = () => {
     const [files, setFiles] = useState<Asset[]>([]);
     const [loading, setLoading] = useState(true);
     const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
-    const [filterType, setFilterType] = useState('all');
+    const [selectedBucket, setSelectedBucket] = useState('stamps');
     const [taggingId, setTaggingId] = useState<string | null>(null);
+    const [isUploading, setIsUploading] = useState(false);
+    
+    const { isSafeMode } = useSafeMode();
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
         fetchData();
-    }, [filterType]);
+    }, [selectedBucket]);
 
     const fetchData = async () => {
         setLoading(true);
-        const { data } = await AdminService.files.list(filterType);
+        const { data } = await AdminService.files.list(selectedBucket);
         setFiles(data);
         setLoading(false);
     };
@@ -80,6 +99,44 @@ export const Files = () => {
         setTaggingId(null);
     };
 
+    const handleUploadClick = () => {
+        fileInputRef.current?.click();
+    };
+
+    const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setIsUploading(true);
+        
+        const { data, error } = await AdminService.files.upload(file, selectedBucket);
+        
+        if (error) {
+            alert(`Upload failed: ${error.message}`);
+        } else if (data) {
+            setFiles(prev => [data, ...prev]);
+        }
+        setIsUploading(false);
+        // Reset input
+        if (fileInputRef.current) fileInputRef.current.value = '';
+    };
+
+    const handleDelete = async (file: Asset) => {
+        if (isSafeMode) {
+             if (!confirm(`SAFE MODE: Are you sure you want to delete ${file.name}?`)) return;
+        } else {
+             // God mode - instant delete? Maybe still one confirm for files since they are hard to restore
+             if (!confirm(`Delete ${file.name} permanently?`)) return;
+        }
+
+        const { error } = await AdminService.files.delete(selectedBucket, file.name);
+        if (error) {
+            alert("Delete failed: " + error.message);
+        } else {
+            setFiles(prev => prev.filter(f => f.id !== file.id));
+        }
+    };
+
     return (
         <div className="space-y-6">
             <div className="flex justify-between items-center">
@@ -87,13 +144,45 @@ export const Files = () => {
                      <div className="p-2 bg-slate-700/50 rounded-lg text-slate-300">
                         <FolderOpen size={24} />
                     </div>
-                    <h1 className="text-2xl font-bold">Asset Library</h1>
+                    <div>
+                        <h1 className="text-2xl font-bold">Asset Library</h1>
+                        <p className="text-xs text-pidgey-muted">Manage storage buckets: {selectedBucket}</p>
+                    </div>
                 </div>
                 <div className="flex gap-2">
-                     <button className="flex items-center gap-2 px-4 py-2 bg-pidgey-panel border border-pidgey-border rounded-lg hover:bg-pidgey-border transition text-sm">
-                        <Upload size={16} /> Upload
+                     <input 
+                        type="file" 
+                        ref={fileInputRef} 
+                        className="hidden" 
+                        accept="image/*"
+                        onChange={handleFileChange}
+                     />
+                     <button 
+                        onClick={handleUploadClick}
+                        disabled={isUploading}
+                        className="flex items-center gap-2 px-4 py-2 bg-pidgey-accent text-pidgey-dark font-bold rounded-lg hover:bg-teal-300 transition text-sm disabled:opacity-50"
+                     >
+                        {isUploading ? <Loader size={16} className="animate-spin" /> : <Upload size={16} />} 
+                        {isUploading ? 'Uploading...' : 'Upload File'}
                     </button>
                 </div>
+            </div>
+
+            {/* Bucket Tabs */}
+            <div className="flex gap-2 overflow-x-auto pb-2 border-b border-pidgey-border">
+                {BUCKETS.map(b => (
+                    <button 
+                        key={b.id}
+                        onClick={() => setSelectedBucket(b.id)}
+                        className={`px-4 py-2 rounded-t-lg text-sm font-bold transition-colors border-b-2 ${
+                            selectedBucket === b.id 
+                            ? 'border-pidgey-accent text-pidgey-accent bg-pidgey-panel' 
+                            : 'border-transparent text-pidgey-muted hover:text-white hover:bg-pidgey-panel/50'
+                        }`}
+                    >
+                        {b.label}
+                    </button>
+                ))}
             </div>
 
             {/* Toolbar */}
@@ -102,22 +191,9 @@ export const Files = () => {
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-pidgey-muted" size={16} />
                     <input 
                         type="text" 
-                        placeholder="Search files..." 
+                        placeholder={`Search ${selectedBucket}...`}
                         className="w-full bg-pidgey-dark border border-pidgey-border rounded-lg pl-9 pr-4 py-2 text-sm focus:outline-none focus:border-pidgey-accent text-white"
                     />
-                </div>
-                <div className="flex gap-2 overflow-x-auto">
-                    {['all', AssetType.STAMP_ART, AssetType.CARD_TEMPLATE, AssetType.ICON].map(t => (
-                        <button 
-                            key={t}
-                            onClick={() => setFilterType(t)}
-                            className={`px-3 py-2 rounded-lg text-xs font-bold capitalize whitespace-nowrap ${
-                                filterType === t ? 'bg-pidgey-accent text-pidgey-dark' : 'bg-pidgey-dark text-pidgey-muted hover:text-white'
-                            }`}
-                        >
-                            {t.replace('_', ' ')}
-                        </button>
-                    ))}
                 </div>
                 <div className="flex bg-pidgey-dark rounded-lg p-1 border border-pidgey-border">
                     <button onClick={() => setViewMode('grid')} className={`p-1.5 rounded ${viewMode === 'grid' ? 'bg-pidgey-panel text-white' : 'text-pidgey-muted'}`}><Grid size={16}/></button>
@@ -126,16 +202,31 @@ export const Files = () => {
             </div>
 
             {/* Grid */}
-            <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-4">
-                {files.map(file => (
-                    <FileCard 
-                        key={file.id} 
-                        file={file} 
-                        onAutoTag={handleAutoTag} 
-                        isTagging={taggingId === file.id} 
-                    />
-                ))}
-            </div>
+            {loading ? (
+                <div className="flex items-center justify-center py-12 text-pidgey-muted">
+                    <Loader className="animate-spin mb-2 mr-2" /> Loading {selectedBucket}...
+                </div>
+            ) : (
+                <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-4">
+                    {files.map(file => (
+                        <FileCard 
+                            key={file.id} 
+                            file={file} 
+                            onAutoTag={handleAutoTag} 
+                            isTagging={taggingId === file.id}
+                            onDelete={handleDelete}
+                            isSafeMode={isSafeMode}
+                        />
+                    ))}
+                    {files.length === 0 && (
+                        <div className="col-span-full py-12 text-center text-pidgey-muted border-2 border-dashed border-pidgey-border rounded-xl">
+                            <ImageIcon size={48} className="mx-auto mb-4 opacity-20" />
+                            <p>No files found in <strong>{selectedBucket}</strong>.</p>
+                            <button onClick={handleUploadClick} className="text-pidgey-accent hover:underline mt-2">Upload one now</button>
+                        </div>
+                    )}
+                </div>
+            )}
         </div>
     );
 };

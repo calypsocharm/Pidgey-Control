@@ -3,7 +3,8 @@ import React, { useState } from 'react';
 import { 
     Search, Plane, MapPin, Mail, Eye, MousePointer, 
     HardDrive, UserPlus, AlertTriangle, CheckCircle, 
-    XCircle, ArrowRight, CornerUpRight, Undo2
+    XCircle, ArrowRight, CornerUpRight, Undo2,
+    Settings, DownloadCloud, Key, RefreshCw
 } from 'lucide-react';
 import { AdminService } from '../services/adminService';
 import { DeliveryJourney, DeliveryStatus, MessageEvent } from '../types';
@@ -13,6 +14,11 @@ export const FlightPath = () => {
     const [journeys, setJourneys] = useState<DeliveryJourney[]>([]);
     const [selectedJourney, setSelectedJourney] = useState<DeliveryJourney | null>(null);
     const [loading, setLoading] = useState(false);
+
+    // SMTP Config State
+    const [showConfig, setShowConfig] = useState(false);
+    const [apiKey, setApiKey] = useState(localStorage.getItem('smtp2go_key') || '');
+    const [isSyncing, setIsSyncing] = useState(false);
 
     // Rescue State
     const [rescueEmail, setRescueEmail] = useState('');
@@ -31,6 +37,22 @@ export const FlightPath = () => {
         }
         setLoading(false);
     };
+
+    const handleSyncLogs = async () => {
+        if (!apiKey) return alert("Please enter SMTP2GO API Key");
+        
+        setIsSyncing(true);
+        localStorage.setItem('smtp2go_key', apiKey); // Persist
+        
+        try {
+            const newLogs = await AdminService.flightPath.syncSmtpGo(apiKey);
+            setJourneys(prev => [...newLogs, ...prev]);
+            alert(`Sync complete. Found ${newLogs.length} new records.`);
+        } catch (e) {
+            alert("Sync failed. Check API Key.");
+        }
+        setIsSyncing(false);
+    }
 
     const handleReroute = async () => {
         if (!selectedJourney || !rescueEmail) return;
@@ -111,7 +133,50 @@ export const FlightPath = () => {
                         <p className="text-xs text-pidgey-muted">Complete lifecycle tracking from Send to Referral.</p>
                     </div>
                 </div>
+                <button 
+                    onClick={() => setShowConfig(!showConfig)}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-bold border transition-colors ${
+                        showConfig ? 'bg-pidgey-accent text-pidgey-dark border-pidgey-accent' : 'bg-transparent border-pidgey-border text-pidgey-muted hover:text-white'
+                    }`}
+                >
+                    <Settings size={16} /> SMTP2GO Config
+                </button>
             </div>
+
+            {/* SMTP Config Panel */}
+            {showConfig && (
+                <div className="bg-pidgey-panel border border-pidgey-border rounded-xl p-6 animate-in slide-in-from-top-4">
+                    <h3 className="font-bold text-white mb-4 flex items-center gap-2">
+                        <DownloadCloud size={18} /> Import Data from Provider
+                    </h3>
+                    <div className="flex gap-4 items-end">
+                        <div className="flex-1">
+                            <label className="block text-xs font-bold text-pidgey-muted uppercase mb-2">SMTP2GO API Key</label>
+                            <div className="relative">
+                                <Key className="absolute left-3 top-1/2 -translate-y-1/2 text-pidgey-muted" size={16} />
+                                <input 
+                                    type="password"
+                                    value={apiKey}
+                                    onChange={(e) => setApiKey(e.target.value)}
+                                    placeholder="Enter your API Key..."
+                                    className="w-full bg-pidgey-dark border border-pidgey-border rounded-lg pl-10 pr-4 py-2.5 text-sm text-white focus:border-pidgey-accent outline-none"
+                                />
+                            </div>
+                        </div>
+                        <button 
+                            onClick={handleSyncLogs}
+                            disabled={isSyncing}
+                            className="px-6 py-2.5 bg-pidgey-accent text-pidgey-dark font-bold rounded-lg hover:bg-teal-300 transition disabled:opacity-50 flex items-center gap-2"
+                        >
+                            {isSyncing ? <RefreshCw className="animate-spin" size={18} /> : <DownloadCloud size={18} />}
+                            {isSyncing ? 'Syncing...' : 'Bring in Data'}
+                        </button>
+                    </div>
+                    <p className="text-xs text-pidgey-muted mt-3">
+                        This will query the external API for recent delivery attempts and merge them into the timeline view.
+                    </p>
+                </div>
+            )}
 
             {/* Search Bar */}
             <form onSubmit={handleSearch} className="flex gap-4 bg-pidgey-panel p-4 rounded-xl border border-pidgey-border">

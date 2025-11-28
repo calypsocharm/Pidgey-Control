@@ -1,15 +1,35 @@
 
-import React, { useState } from 'react';
-import { Image as ImageIcon, Move, Palette, Download, RefreshCw } from 'lucide-react';
-import { MOCK_ASSETS, MOCK_STAMPS } from '../constants';
-import { AssetType } from '../types';
+import React, { useState, useEffect } from 'react';
+import { Image as ImageIcon, Move, Palette, Download, RefreshCw, Loader } from 'lucide-react';
+import { AdminService } from '../services/adminService';
+import { AssetType, Asset } from '../types';
 
 export const Playground = () => {
-    const backgrounds = MOCK_ASSETS.filter(a => a.type === AssetType.CARD_TEMPLATE);
-    const stamps = MOCK_STAMPS;
+    const [backgrounds, setBackgrounds] = useState<Asset[]>([]);
+    const [stamps, setStamps] = useState<Asset[]>([]);
+    const [loading, setLoading] = useState(true);
 
-    const [bg, setBg] = useState(backgrounds[0]?.url || 'https://via.placeholder.com/600x800');
+    const [bg, setBg] = useState('');
     const [placedStamps, setPlacedStamps] = useState<{id: string, url: string, x: number, y: number}[]>([]);
+
+    useEffect(() => {
+        const fetchAssets = async () => {
+            setLoading(true);
+            
+            // Fetch templates for backgrounds
+            const { data: bgs } = await AdminService.files.list('templates');
+            
+            // Fetch stamps for dragging
+            const { data: stps } = await AdminService.files.list('stamps');
+            
+            setBackgrounds(bgs);
+            setStamps(stps);
+            
+            if (bgs.length > 0) setBg(bgs[0].url);
+            setLoading(false);
+        };
+        fetchAssets();
+    }, []);
 
     const addStamp = (url: string) => {
         setPlacedStamps([...placedStamps, {
@@ -34,17 +54,22 @@ export const Playground = () => {
                             <ImageIcon size={16} /> Backgrounds
                         </h3>
                     </div>
-                    <div className="flex-1 overflow-y-auto p-4 grid grid-cols-2 gap-2">
-                        {backgrounds.map((b, i) => (
-                            <div 
-                                key={i} 
-                                onClick={() => setBg(b.url)}
-                                className={`aspect-[3/4] rounded-lg overflow-hidden cursor-pointer border-2 transition-all ${bg === b.url ? 'border-pidgey-accent ring-2 ring-pidgey-accent/20' : 'border-transparent hover:border-pidgey-muted'}`}
-                            >
-                                <img src={b.url} className="w-full h-full object-cover" />
-                            </div>
-                        ))}
-                    </div>
+                    {loading ? (
+                        <div className="flex-1 flex items-center justify-center text-pidgey-muted"><Loader className="animate-spin"/></div>
+                    ) : (
+                        <div className="flex-1 overflow-y-auto p-4 grid grid-cols-2 gap-2">
+                            {backgrounds.map((b, i) => (
+                                <div 
+                                    key={i} 
+                                    onClick={() => setBg(b.url)}
+                                    className={`aspect-[3/4] rounded-lg overflow-hidden cursor-pointer border-2 transition-all ${bg === b.url ? 'border-pidgey-accent ring-2 ring-pidgey-accent/20' : 'border-transparent hover:border-pidgey-muted'}`}
+                                >
+                                    <img src={b.url} className="w-full h-full object-cover" />
+                                </div>
+                            ))}
+                            {backgrounds.length === 0 && <p className="col-span-2 text-xs text-center text-pidgey-muted">No backgrounds found in 'templates'.</p>}
+                        </div>
+                    )}
                 </div>
 
                 <div className="bg-pidgey-panel border border-pidgey-border rounded-xl flex-1 flex flex-col overflow-hidden">
@@ -53,24 +78,33 @@ export const Playground = () => {
                             <Palette size={16} /> Stamp Tray
                         </h3>
                     </div>
-                    <div className="flex-1 overflow-y-auto p-4 grid grid-cols-3 gap-2">
-                        {stamps.map((s, i) => (
-                            <div 
-                                key={i} 
-                                onClick={() => addStamp(s.art_path)}
-                                className="aspect-square bg-pidgey-dark rounded-lg p-2 cursor-pointer border border-pidgey-border hover:border-pidgey-accent hover:bg-pidgey-accent/10 transition-all flex items-center justify-center"
-                            >
-                                <img src={s.art_path} className="max-w-full max-h-full object-contain" />
-                            </div>
-                        ))}
-                    </div>
+                    {loading ? (
+                         <div className="flex-1 flex items-center justify-center text-pidgey-muted"><Loader className="animate-spin"/></div>
+                    ) : (
+                        <div className="flex-1 overflow-y-auto p-4 grid grid-cols-3 gap-2">
+                            {stamps.map((s, i) => (
+                                <div 
+                                    key={i} 
+                                    onClick={() => addStamp(s.url)}
+                                    className="aspect-square bg-pidgey-dark rounded-lg p-2 cursor-pointer border border-pidgey-border hover:border-pidgey-accent hover:bg-pidgey-accent/10 transition-all flex items-center justify-center"
+                                >
+                                    <img src={s.url} className="max-w-full max-h-full object-contain" />
+                                </div>
+                            ))}
+                            {stamps.length === 0 && <p className="col-span-3 text-xs text-center text-pidgey-muted">No stamps found in 'stamps'.</p>}
+                        </div>
+                    )}
                 </div>
             </div>
 
             {/* Center: Canvas */}
             <div className="flex-1 bg-pidgey-dark border border-pidgey-border rounded-xl flex items-center justify-center relative overflow-hidden bg-[radial-gradient(#334155_1px,transparent_1px)] [background-size:16px_16px]">
                 <div className="relative h-[80%] aspect-[3/4] bg-white shadow-2xl rounded overflow-hidden transition-all duration-300">
-                    <img src={bg} className="w-full h-full object-cover" />
+                    {bg ? (
+                        <img src={bg} className="w-full h-full object-cover" />
+                    ) : (
+                        <div className="w-full h-full bg-slate-200 flex items-center justify-center text-slate-400">Select a background</div>
+                    )}
                     
                     {/* Placed Stamps Layer */}
                     {placedStamps.map((s, i) => (
@@ -82,7 +116,8 @@ export const Playground = () => {
                             onDragEnd={(e) => {
                                 // Very basic drag simulation
                                 const newStamps = [...placedStamps];
-                                newStamps[i].x = Math.max(0, Math.min(90, (e.clientX / window.innerWidth) * 100)); // Mock logic
+                                // This assumes full screen drag, mostly for demo
+                                newStamps[i].x = Math.max(0, Math.min(90, (e.clientX / window.innerWidth) * 100)); 
                                 newStamps[i].y = Math.max(0, Math.min(90, (e.clientY / window.innerHeight) * 100));
                                 setPlacedStamps(newStamps);
                             }}

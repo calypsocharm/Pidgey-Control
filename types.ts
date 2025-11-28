@@ -126,6 +126,7 @@ export interface Asset {
   tags: string[];
   usage_count: number; 
   created_at: string;
+  bucket?: string; // Optional reference to source bucket
 }
 
 // Deliveries (Message Health) & Flight Path
