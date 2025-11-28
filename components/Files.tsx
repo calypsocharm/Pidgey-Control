@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { FolderOpen, Image as ImageIcon, FileText, Grid, List, Download, Trash2, Search, Upload, Sparkles, Loader, Plus, X, Save, Tag } from 'lucide-react';
+import { FolderOpen, Image as ImageIcon, FileText, Grid, List, Download, Trash2, Search, Upload, Sparkles, Loader, Plus, X, Save, Tag, RefreshCw } from 'lucide-react';
 import { AdminService } from '../services/adminService';
 import { generateTagsForAsset } from '../services/geminiService';
 import { Asset, AssetType, Stamp, StampRarity, StampStatus } from '../types';
@@ -80,6 +80,7 @@ export const Files = () => {
     const [selectedBucket, setSelectedBucket] = useState('stamps');
     const [taggingId, setTaggingId] = useState<string | null>(null);
     const [isUploading, setIsUploading] = useState(false);
+    const [isSyncing, setIsSyncing] = useState(false);
     
     // Stamp Creation State
     const [isStampModalOpen, setIsStampModalOpen] = useState(false);
@@ -104,6 +105,14 @@ export const Files = () => {
         const { data } = await AdminService.files.list(selectedBucket);
         setFiles(data);
         setLoading(false);
+    };
+
+    const handleSync = async () => {
+        setIsSyncing(true);
+        await fetchData();
+        // Artificial delay to show visual feedback if fetch is too fast
+        await new Promise(resolve => setTimeout(resolve, 500));
+        setIsSyncing(false);
     };
 
     const handleAutoTag = async (file: Asset) => {
@@ -228,6 +237,16 @@ export const Files = () => {
                     </div>
                 </div>
                 <div className="flex gap-2">
+                     <button 
+                        onClick={handleSync}
+                        disabled={isSyncing || loading}
+                        className="flex items-center gap-2 px-4 py-2 bg-pidgey-dark border border-pidgey-border hover:bg-pidgey-panel text-white font-bold rounded-lg transition text-sm disabled:opacity-50"
+                        title="Refresh file list from server"
+                     >
+                        <RefreshCw size={16} className={isSyncing ? "animate-spin" : ""} />
+                        {isSyncing ? 'Syncing...' : 'Sync'}
+                     </button>
+
                      {selectedBucket === 'stamps' && (
                         <button 
                             onClick={() => openStampCreator()}
