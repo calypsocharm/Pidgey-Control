@@ -1,3 +1,4 @@
+
 export const PUBLIC_SCHEMA_DDL = `
 -- 1) TABLE: profiles
 CREATE TABLE public.profiles (
@@ -10,7 +11,6 @@ CREATE TABLE public.profiles (
     created_at timestamptz DEFAULT now(),
     last_seen timestamptz DEFAULT now()
 );
--- RLS: ENABLE ROW LEVEL SECURITY
 
 -- 2) TABLE: cards
 CREATE TABLE public.cards (
@@ -20,24 +20,45 @@ CREATE TABLE public.cards (
     updated_at timestamptz DEFAULT now(),
     owner_id text
 );
--- Foreign keys: owner_id REFERENCES public.profiles(id)
--- RLS: ENABLE ROW LEVEL SECURITY
 
--- 3) TABLE: user_templates
-CREATE TABLE public.user_templates (
-    id text PRIMARY KEY,
-    owner_id text,
-    template_id text,
-    template_data jsonb,
-    created_at timestamptz DEFAULT now(),
-    updated_at timestamptz DEFAULT now()
+-- 3) TABLE: transactions (Revenue)
+CREATE TABLE public.transactions (
+    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+    profile_id text REFERENCES public.profiles(id),
+    amount numeric,
+    currency text,
+    status text,
+    description text,
+    created_at timestamptz DEFAULT now()
 );
--- Foreign keys: owner_id REFERENCES public.profiles(id)
--- RLS: ENABLE ROW LEVEL SECURITY
 
--- INSTALLED EXTENSIONS:
--- intarray, xml2, pgmq, vector, pg_cron, ltree, pgtap, pg_net, pgjwt, supabase_vault, pg_graphql
+-- 4) TABLE: tickets (Support)
+CREATE TABLE public.tickets (
+    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+    profile_id text REFERENCES public.profiles(id),
+    subject text,
+    status text,
+    priority text,
+    created_at timestamptz DEFAULT now()
+);
 
--- EDGE FUNCTIONS:
--- resend-card (id: 99062919...)
+-- 5) TABLE: activity_logs (Real-time feed)
+CREATE TABLE public.activity_logs (
+    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+    user_id text REFERENCES public.profiles(id),
+    action_type text,
+    description text,
+    created_at timestamptz DEFAULT now()
+);
+
+-- 6) TABLE: drops
+CREATE TABLE public.drops (
+  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  title text,
+  description text,
+  status text,
+  start_at timestamptz,
+  end_at timestamptz,
+  created_at timestamptz DEFAULT now()
+);
 `;

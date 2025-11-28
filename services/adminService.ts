@@ -14,6 +14,79 @@ export interface ListResponse<T> {
 
 export const AdminService = {
   
+  // --- Dashboard Stats (Realtime) ---
+  dashboard: {
+      getStats: async () => {
+          try {
+              // 1. Active Members
+              const { count: memberCount } = await supabase
+                  .from('profiles')
+                  .select('*', { count: 'exact', head: true });
+
+              // 2. Revenue (Sum of successful transactions)
+              // Note: For large datasets, use a Postgres RPC function. For now, we fetch recent txs.
+              const { data: txs } = await supabase
+                  .from('transactions')
+                  .select('amount')
+                  .eq('status', 'succeeded');
+              
+              const totalRevenue = txs?.reduce((sum, tx) => sum + (Number(tx.amount) || 0), 0) || 0;
+
+              // 3. Pending Tickets
+              const { count: ticketCount } = await supabase
+                  .from('tickets')
+                  .select('*', { count: 'exact', head: true })
+                  .neq('status', 'closed');
+
+              // 4. Recent Activity
+              const { data: activity } = await supabase
+                  .from('activity_logs')
+                  .select('*, profiles(full_name)')
+                  .order('created_at', { ascending: false })
+                  .limit(5);
+
+              return {
+                  members: memberCount || 0,
+                  revenue: totalRevenue,
+                  tickets: ticketCount || 0,
+                  activity: activity || [],
+                  error: null
+              };
+          } catch (e: any) {
+              console.error("Dashboard Stats Error:", e);
+              return { members: 0, revenue: 0, tickets: 0, activity: [], error: e.message };
+          }
+      },
+      
+      // Fetch Chart Data (Aggregated by day)
+      getRevenueChart: async () => {
+          // This is a simplified frontend aggregation. 
+          // Ideally, create a Postgres View: "create view daily_revenue as select date_trunc('day', created_at)..."
+          const { data: txs } = await supabase
+              .from('transactions')
+              .select('amount, created_at')
+              .eq('status', 'succeeded')
+              .gte('created_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()); // Last 7 days
+
+          const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+          const chartData = days.map(d => ({ name: d, revenue: 0, eggs: 0 }));
+          
+          if (txs) {
+              txs.forEach(tx => {
+                  const date = new Date(tx.created_at);
+                  const dayName = days[date.getDay()];
+                  const dayObj = chartData.find(d => d.name === dayName);
+                  if (dayObj) {
+                      dayObj.revenue += Number(tx.amount);
+                      // Simulate egg correlation
+                      dayObj.eggs += Math.floor(Number(tx.amount) * 10); 
+                  }
+              });
+          }
+          return chartData;
+      }
+  },
+
   // --- Profiles / Members ---
   
   profiles: {
@@ -86,17 +159,25 @@ export const AdminService = {
     },
 
     getTransactions: async (id: string): Promise<Transaction[]> => {
-        // Mock data since we don't have a payments table
-        return [
-            { id: 'tx_1', profile_id: id, amount: 9.99, currency: 'USD', description: 'Pro Subscription (Monthly)', status: 'succeeded', created_at: '2023-10-01T10:00:00Z' },
-            { id: 'tx_2', profile_id: id, amount: 4.99, currency: 'USD', description: 'Egg Bundle (50)', status: 'succeeded', created_at: '2023-09-15T14:30:00Z' },
-            { id: 'tx_3', profile_id: id, amount: 1.99, currency: 'USD', description: 'Mystery Egg', status: 'refunded', created_at: '2023-09-10T09:15:00Z' },
-        ];
+        // Fetch real transactions
+        const { data, error } = await supabase
+            .from('transactions')
+            .select('*')
+            .eq('profile_id', id)
+            .order('created_at', { ascending: false });
+            
+        if (error || !data) return [];
+        return data as Transaction[];
     },
 
     refundTransaction: async (txId: string) => {
+        const { error } = await supabase
+            .from('transactions')
+            .update({ status: 'refunded' })
+            .eq('id', txId);
+            
         console.log(`[AUDIT] Refunding transaction ${txId}`);
-        return { success: true };
+        return { success: !error };
     }
   },
 

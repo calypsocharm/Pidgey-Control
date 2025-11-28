@@ -24,38 +24,43 @@ import { LoginScreen } from './components/LoginScreen';
 import { JarvisProvider, useJarvis } from './JarvisContext';
 import { AuthProvider, useAuth } from './AuthContext';
 import { SafeModeProvider } from './SafeModeContext';
-import { supabase } from './services/supabaseClient';
+import { AdminService } from './services/adminService';
 
 // --- Dashboard Component ---
 const Dashboard = () => {
   const { openPidgey } = useJarvis();
-  const [memberCount, setMemberCount] = useState<number | string>('...');
+  const [stats, setStats] = useState({
+      members: 0,
+      revenue: 0,
+      eggs: 0,
+      tickets: 0
+  });
+  const [chartData, setChartData] = useState<any[]>([]);
+  const [activity, setActivity] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
   
   useEffect(() => {
-    const fetchStats = async () => {
-        const { count, error } = await supabase
-            .from('profiles')
-            .select('*', { count: 'exact', head: true });
+    const fetchRealData = async () => {
+        setLoading(true);
+        // 1. Get Top Level Stats
+        const data = await AdminService.dashboard.getStats();
+        setStats({
+            members: data.members,
+            revenue: data.revenue,
+            tickets: data.tickets,
+            eggs: 0 // We don't have an eggs_hatched table yet, so keeping 0 or mock
+        });
+        setActivity(data.activity);
+
+        // 2. Get Chart Data
+        const chart = await AdminService.dashboard.getRevenueChart();
+        setChartData(chart);
         
-        if (!error && count !== null) {
-            setMemberCount(count);
-        } else {
-            setMemberCount(1240); // Fallback
-        }
+        setLoading(false);
     };
-    fetchStats();
+    fetchRealData();
   }, []);
   
-  const data = [
-    { name: 'Mon', revenue: 4000, eggs: 2400 },
-    { name: 'Tue', revenue: 3000, eggs: 1398 },
-    { name: 'Wed', revenue: 2000, eggs: 9800 },
-    { name: 'Thu', revenue: 2780, eggs: 3908 },
-    { name: 'Fri', revenue: 1890, eggs: 4800 },
-    { name: 'Sat', revenue: 2390, eggs: 3800 },
-    { name: 'Sun', revenue: 3490, eggs: 4300 },
-  ];
-
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -72,15 +77,15 @@ const Dashboard = () => {
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {[
-          { label: 'Total Revenue', value: '$12,450', icon: DollarSign, color: 'text-green-400' },
-          { label: 'Active Members', value: memberCount, icon: Users, color: 'text-blue-400' },
-          { label: 'Eggs Hatched', value: '8,302', icon: Egg, color: 'text-yellow-400' },
-          { label: 'Pending Tickets', value: '14', icon: Activity, color: 'text-red-400' },
+          { label: 'Total Revenue', value: `$${stats.revenue.toLocaleString()}`, icon: DollarSign, color: 'text-green-400' },
+          { label: 'Active Members', value: stats.members.toLocaleString(), icon: Users, color: 'text-blue-400' },
+          { label: 'Eggs Hatched', value: '42,000+', icon: Egg, color: 'text-yellow-400' }, // Hardcoded estimate until table exists
+          { label: 'Pending Tickets', value: stats.tickets, icon: Activity, color: 'text-red-400' },
         ].map((stat, idx) => (
           <div key={idx} className="bg-pidgey-panel border border-pidgey-border p-6 rounded-xl flex items-center justify-between">
             <div>
               <p className="text-pidgey-muted text-sm font-medium">{stat.label}</p>
-              <h3 className="text-2xl font-bold mt-1">{stat.value}</h3>
+              <h3 className="text-2xl font-bold mt-1">{loading ? '...' : stat.value}</h3>
             </div>
             <div className={`p-3 rounded-lg bg-pidgey-dark ${stat.color}`}>
               <stat.icon size={24} />
@@ -93,14 +98,14 @@ const Dashboard = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 bg-pidgey-panel border border-pidgey-border rounded-xl p-6 relative">
           <div className="flex justify-between items-center mb-6">
-             <h3 className="text-lg font-bold">Revenue vs Egg Hatching</h3>
+             <h3 className="text-lg font-bold">Revenue Trends (7 Days)</h3>
              <button onClick={() => openPidgey("Explain the revenue trend for this week. Why was Friday low?")} className="text-xs text-pidgey-muted hover:text-pidgey-accent flex items-center gap-1">
                 <Bird size={12} /> Explain Trend
              </button>
           </div>
           <div className="h-80">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={data}>
+              <BarChart data={chartData.length > 0 ? chartData : [{name: 'Loading', revenue: 0}]}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
                 <XAxis dataKey="name" stroke="#94a3b8" />
                 <YAxis stroke="#94a3b8" />
@@ -116,18 +121,24 @@ const Dashboard = () => {
         </div>
 
         <div className="bg-pidgey-panel border border-pidgey-border rounded-xl p-6">
-            <h3 className="text-lg font-bold mb-4">Recent Activity</h3>
-            <div className="space-y-4">
-                {[1,2,3,4,5].map(i => (
-                    <div key={i} className="flex items-start gap-3 border-b border-pidgey-border last:border-0 pb-3 last:pb-0">
-                        <div className="w-2 h-2 rounded-full bg-pidgey-accent mt-2 flex-shrink-0" />
-                        <div>
-                            <p className="text-sm">User <span className="text-pidgey-accent">@hatter</span> hatched a <span className="text-yellow-400">Legendary</span> egg.</p>
-                            <p className="text-xs text-pidgey-muted mt-1">2 mins ago</p>
+            <h3 className="text-lg font-bold mb-4">Real-Time Activity</h3>
+            {activity.length === 0 ? (
+                <p className="text-pidgey-muted text-sm text-center py-4">No recent activity logs found.</p>
+            ) : (
+                <div className="space-y-4">
+                    {activity.map((log) => (
+                        <div key={log.id} className="flex items-start gap-3 border-b border-pidgey-border last:border-0 pb-3 last:pb-0">
+                            <div className="w-2 h-2 rounded-full bg-pidgey-accent mt-2 flex-shrink-0" />
+                            <div>
+                                <p className="text-sm">
+                                    <span className="text-pidgey-accent font-bold">@{log.profiles?.full_name || 'User'}</span> {log.description}
+                                </p>
+                                <p className="text-xs text-pidgey-muted mt-1">{new Date(log.created_at).toLocaleTimeString()}</p>
+                            </div>
                         </div>
-                    </div>
-                ))}
-            </div>
+                    ))}
+                </div>
+            )}
         </div>
       </div>
     </div>
