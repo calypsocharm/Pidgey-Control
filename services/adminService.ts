@@ -127,7 +127,7 @@ export const AdminService = {
       const { data, count, error } = await query;
       const mappedData = data?.map(p => ({
           ...p,
-          status: 'active'
+          status: p.status || 'active'
       })) || [];
       
       return { data: (mappedData as Profile[]), count: count || 0, error };
@@ -146,6 +146,7 @@ export const AdminService = {
             egg_balance: { standard: 3, premium: 0, mystery: 0 },
             created_at: new Date().toISOString(),
             last_seen: new Date().toISOString(),
+            status: 'active',
             ...profileData
         };
         const { data, error } = await supabase.from('profiles').insert(payload).select().single();
@@ -161,7 +162,8 @@ export const AdminService = {
     ban: async (id: string, reason: string) => {
         console.log(`[AUDIT] Banning user ${id} reason: ${reason}`);
         // In real app, update a 'status' column or 'banned_at'
-        return { error: null };
+        const { error } = await supabase.from('profiles').update({ status: 'banned' }).eq('id', id);
+        return { error };
     },
 
     adjustBalance: async (id: string, amount: number, type: 'standard' | 'premium', reason: string) => {

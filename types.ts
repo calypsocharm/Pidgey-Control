@@ -198,7 +198,7 @@ export interface Profile {
   created_at: string | null;
   last_seen: string | null;
   avatar_url?: string; // Virtual UI field
-  status?: 'active' | 'banned' | 'suspended'; // UI status
+  status: 'active' | 'banned' | 'suspended'; // UI status
   
   // Player 360 Stats (Virtual)
   stats?: {
@@ -306,7 +306,7 @@ export interface ChatMessage {
     content: string;
     timestamp: Date;
     action?: {
-        type: 'DRAFT_DROP' | 'DRAFT_STAMP' | 'DRAFT_PROMO';
+        type: 'DRAFT_DROP' | 'DRAFT_STAMP' | 'DRAFT_PROMO' | 'MIGRATE_DATA';
         payload: any;
     }
 }

@@ -8,6 +8,7 @@ CREATE TABLE public.profiles (
     role text DEFAULT 'user'::text,
     tier text DEFAULT 'Free'::text,
     egg_balance jsonb DEFAULT '{"mystery": 0, "premium": 0, "standard": 3}'::jsonb,
+    status text DEFAULT 'active'::text,
     created_at timestamptz DEFAULT now(),
     last_seen timestamptz DEFAULT now()
 );
@@ -60,5 +61,18 @@ CREATE TABLE public.drops (
   start_at timestamptz,
   end_at timestamptz,
   created_at timestamptz DEFAULT now()
+);
+
+-- 7) TABLE: stamps
+CREATE TABLE public.stamps (
+  id text primary key,
+  name text,
+  rarity text,
+  status text,
+  collection text,
+  art_path text, -- URL to the file in storage
+  price_eggs int default 0,
+  is_drop_only boolean default false,
+  created_at timestamptz default now()
 );
 `;

@@ -22,7 +22,7 @@ export const Members = () => {
 
     // Add Member Modal State
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-    const [newMember, setNewMember] = useState<Partial<Profile>>({ role: Role.USER, tier: Tier.FREE, egg_balance: { standard: 3, premium: 0, mystery: 0 } });
+    const [newMember, setNewMember] = useState<Partial<Profile>>({ role: Role.USER, tier: Tier.FREE, egg_balance: { standard: 3, premium: 0, mystery: 0 }, status: 'active' });
 
     // Economy Action State
     const [eggAdjustment, setEggAdjustment] = useState({ amount: 0, type: 'standard' as 'standard'|'premium', reason: '' });
@@ -61,7 +61,7 @@ export const Members = () => {
         } else {
             setIsAddModalOpen(false);
             fetchMembers();
-            setNewMember({ role: Role.USER, tier: Tier.FREE, egg_balance: { standard: 3, premium: 0, mystery: 0 } });
+            setNewMember({ role: Role.USER, tier: Tier.FREE, egg_balance: { standard: 3, premium: 0, mystery: 0 }, status: 'active' });
         }
     };
 
@@ -112,6 +112,17 @@ export const Members = () => {
 
         await AdminService.profiles.refundTransaction(txId);
         setTransactions(prev => prev.map(t => t.id === txId ? { ...t, status: 'refunded' } : t));
+    };
+
+    const getStatusBadge = (status: string | undefined) => {
+        switch(status) {
+            case 'banned': 
+                return <span className="text-xs font-bold bg-red-500/20 text-red-400 px-2 py-1 rounded uppercase">Banned</span>;
+            case 'suspended':
+                return <span className="text-xs font-bold bg-orange-500/20 text-orange-400 px-2 py-1 rounded uppercase">Suspended</span>;
+            default:
+                return <span className="text-xs font-bold text-green-400">Active</span>;
+        }
     };
 
     return (
@@ -202,11 +213,7 @@ export const Members = () => {
                                             </div>
                                         </td>
                                         <td className="px-6 py-4">
-                                            {profile.status === 'banned' ? (
-                                                <span className="text-xs font-bold bg-red-500/20 text-red-400 px-2 py-1 rounded uppercase">Banned</span>
-                                            ) : (
-                                                <span className="text-xs font-bold text-green-400">Active</span>
-                                            )}
+                                            {getStatusBadge(profile.status)}
                                         </td>
                                     </tr>
                                 ))}
@@ -233,7 +240,8 @@ export const Members = () => {
                                 <p className="text-pidgey-muted text-sm">{selectedMember.email}</p>
                                 <div className="flex gap-2 mt-2">
                                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                                        selectedMember.status === 'banned' ? 'bg-red-500 text-white' : 'bg-green-500 text-pidgey-dark'
+                                        selectedMember.status === 'banned' ? 'bg-red-500 text-white' : 
+                                        selectedMember.status === 'suspended' ? 'bg-orange-500 text-white' : 'bg-green-500 text-pidgey-dark'
                                     }`}>{selectedMember.status || 'Active'}</span>
                                     <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-pidgey-border text-pidgey-muted">
                                         ID: {selectedMember.id}
@@ -443,6 +451,18 @@ export const Members = () => {
                                         {Object.values(Tier).map(t => <option key={t} value={t}>{t}</option>)}
                                     </select>
                                 </div>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-pidgey-muted uppercase mb-1">Status</label>
+                                <select 
+                                    className="w-full bg-pidgey-dark border border-pidgey-border rounded-lg p-2.5 text-white"
+                                    value={newMember.status || 'active'}
+                                    onChange={e => setNewMember({...newMember, status: e.target.value as any})}
+                                >
+                                    <option value="active">Active</option>
+                                    <option value="suspended">Suspended</option>
+                                    <option value="banned">Banned</option>
+                                </select>
                             </div>
                             <div>
                                 <label className="block text-xs font-bold text-pidgey-muted uppercase mb-1">Initial Eggs (Standard)</label>

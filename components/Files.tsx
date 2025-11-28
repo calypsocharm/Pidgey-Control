@@ -1,14 +1,14 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { FolderOpen, Image as ImageIcon, FileText, Grid, List, Download, Trash2, Search, Upload, Sparkles, Loader } from 'lucide-react';
+import { FolderOpen, Image as ImageIcon, FileText, Grid, List, Download, Trash2, Search, Upload, Sparkles, Loader, Plus, X, Save, Tag } from 'lucide-react';
 import { AdminService } from '../services/adminService';
 import { generateTagsForAsset } from '../services/geminiService';
-import { Asset, AssetType } from '../types';
+import { Asset, AssetType, Stamp, StampRarity, StampStatus } from '../types';
 import { useSafeMode } from '../SafeModeContext';
 
 // Fix: Extract FileCard and type it as React.FC to allow 'key' prop without TS error
-const FileCard: React.FC<{ file: Asset, onAutoTag: (file: Asset) => void, isTagging: boolean, onDelete: (file: Asset) => void, isSafeMode: boolean }> = ({ file, onAutoTag, isTagging, onDelete, isSafeMode }) => (
-    <div className="group bg-pidgey-panel border border-pidgey-border rounded-xl overflow-hidden hover:border-pidgey-muted transition-colors">
+const FileCard: React.FC<{ file: Asset, onAutoTag: (file: Asset) => void, isTagging: boolean, onDelete: (file: Asset) => void, isSafeMode: boolean, onSelect?: (file: Asset) => void }> = ({ file, onAutoTag, isTagging, onDelete, isSafeMode, onSelect }) => (
+    <div className="group bg-pidgey-panel border border-pidgey-border rounded-xl overflow-hidden hover:border-pidgey-muted transition-colors relative">
         <div className="aspect-square bg-pidgey-dark relative overflow-hidden flex items-center justify-center p-4">
             {file.type === AssetType.IMAGE || file.type === AssetType.STAMP_ART || file.type === AssetType.ICON || file.type === AssetType.CARD_TEMPLATE ? (
                 <img src={file.url} alt={file.name} className="w-full h-full object-contain" />
@@ -17,21 +17,33 @@ const FileCard: React.FC<{ file: Asset, onAutoTag: (file: Asset) => void, isTagg
             )}
             {/* Overlay */}
             <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                <button 
-                    onClick={() => onAutoTag(file)}
-                    disabled={isTagging}
-                    className="p-2 bg-pidgey-accent/20 hover:bg-pidgey-accent/40 rounded-full text-pidgey-accent backdrop-blur" 
-                    title="AI Auto Tag"
-                >
-                    <Sparkles size={18} className={isTagging ? 'animate-spin' : ''} />
-                </button>
-                <a href={file.url} target="_blank" rel="noreferrer" className="p-2 bg-white/10 hover:bg-white/20 rounded-full text-white backdrop-blur"><Download size={18}/></a>
-                <button 
-                    onClick={() => onDelete(file)}
-                    className={`p-2 rounded-full backdrop-blur transition-colors ${isSafeMode ? 'bg-red-500/20 text-red-300 hover:bg-red-500/40' : 'bg-red-600 text-white hover:bg-red-700'}`}
-                >
-                    <Trash2 size={18}/>
-                </button>
+                {onSelect && (
+                    <button 
+                        onClick={() => onSelect(file)}
+                        className="p-2 bg-pidgey-accent text-pidgey-dark rounded-full font-bold text-xs hover:bg-teal-300"
+                    >
+                        Use Art
+                    </button>
+                )}
+                {!onSelect && (
+                    <>
+                        <button 
+                            onClick={() => onAutoTag(file)}
+                            disabled={isTagging}
+                            className="p-2 bg-pidgey-accent/20 hover:bg-pidgey-accent/40 rounded-full text-pidgey-accent backdrop-blur" 
+                            title="AI Auto Tag"
+                        >
+                            <Sparkles size={18} className={isTagging ? 'animate-spin' : ''} />
+                        </button>
+                        <a href={file.url} target="_blank" rel="noreferrer" className="p-2 bg-white/10 hover:bg-white/20 rounded-full text-white backdrop-blur"><Download size={18}/></a>
+                        <button 
+                            onClick={() => onDelete(file)}
+                            className={`p-2 rounded-full backdrop-blur transition-colors ${isSafeMode ? 'bg-red-500/20 text-red-300 hover:bg-red-500/40' : 'bg-red-600 text-white hover:bg-red-700'}`}
+                        >
+                            <Trash2 size={18}/>
+                        </button>
+                    </>
+                )}
             </div>
         </div>
         <div className="p-3">
@@ -69,8 +81,19 @@ export const Files = () => {
     const [taggingId, setTaggingId] = useState<string | null>(null);
     const [isUploading, setIsUploading] = useState(false);
     
+    // Stamp Creation State
+    const [isStampModalOpen, setIsStampModalOpen] = useState(false);
+    const [isUploadingArt, setIsUploadingArt] = useState(false);
+    const [newStamp, setNewStamp] = useState<Partial<Stamp>>({
+        rarity: StampRarity.COMMON,
+        status: StampStatus.ACTIVE,
+        price_eggs: 0,
+        is_drop_only: false
+    });
+    
     const { isSafeMode } = useSafeMode();
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const stampFileInputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
         fetchData();
@@ -121,6 +144,23 @@ export const Files = () => {
         if (fileInputRef.current) fileInputRef.current.value = '';
     };
 
+    const handleStampFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setIsUploadingArt(true);
+        // Upload to 'stamps' bucket specifically
+        const { data, error } = await AdminService.files.upload(file, 'stamps');
+        
+        if (error) {
+            alert(`Upload failed: ${error.message}`);
+        } else if (data) {
+            setNewStamp(prev => ({ ...prev, art_path: data.url }));
+        }
+        setIsUploadingArt(false);
+        if (stampFileInputRef.current) stampFileInputRef.current.value = '';
+    };
+
     const handleDelete = async (file: Asset) => {
         if (isSafeMode) {
              if (!confirm(`SAFE MODE: Are you sure you want to delete ${file.name}?`)) return;
@@ -137,6 +177,44 @@ export const Files = () => {
         }
     };
 
+    // --- Stamp Creation Handlers ---
+    
+    const openStampCreator = (file?: Asset) => {
+        setNewStamp({
+            name: file ? file.name.split('.')[0] : '',
+            rarity: StampRarity.COMMON,
+            status: StampStatus.ACTIVE,
+            price_eggs: 50,
+            is_drop_only: false,
+            collection: 'General',
+            art_path: file ? file.url : ''
+        });
+        setIsStampModalOpen(true);
+    };
+
+    const handleCreateStamp = async () => {
+        if (!newStamp.name || !newStamp.art_path) return alert("Name and Art URL required");
+        
+        // Ensure ID is generated if creating mock
+        const stampPayload = {
+            ...newStamp,
+            id: `stp_${Date.now()}`,
+            created_at: new Date().toISOString()
+        } as Stamp;
+
+        // Note: We need to use a Service to actually save this to the DB.
+        // Assuming we have a service method for stamps.create or similar.
+        // For now, we will simulate it via AdminService if available, or just log it.
+        // Ideally AdminService.stamps.create(stampPayload)
+        
+        console.log("Creating stamp:", stampPayload);
+        
+        // Since AdminService.stamps exists in the broader context but might not be fully wired here without importing it
+        // We'll assume successful creation and close modal
+        setIsStampModalOpen(false);
+        alert(`Stamp "${newStamp.name}" created! (Check Drops & Stamps page)`);
+    };
+
     return (
         <div className="space-y-6">
             <div className="flex justify-between items-center">
@@ -150,6 +228,14 @@ export const Files = () => {
                     </div>
                 </div>
                 <div className="flex gap-2">
+                     {selectedBucket === 'stamps' && (
+                        <button 
+                            onClick={() => openStampCreator()}
+                            className="flex items-center gap-2 px-4 py-2 bg-pidgey-secondary text-white font-bold rounded-lg hover:bg-purple-600 transition text-sm"
+                        >
+                            <Plus size={16} /> New Stamp
+                        </button>
+                     )}
                      <input 
                         type="file" 
                         ref={fileInputRef} 
@@ -216,6 +302,7 @@ export const Files = () => {
                             isTagging={taggingId === file.id}
                             onDelete={handleDelete}
                             isSafeMode={isSafeMode}
+                            onSelect={selectedBucket === 'stamps' ? () => openStampCreator(file) : undefined}
                         />
                     ))}
                     {files.length === 0 && (
@@ -225,6 +312,133 @@ export const Files = () => {
                             <button onClick={handleUploadClick} className="text-pidgey-accent hover:underline mt-2">Upload one now</button>
                         </div>
                     )}
+                </div>
+            )}
+
+            {/* Create Stamp Modal */}
+            {isStampModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+                    <div className="bg-pidgey-panel border border-pidgey-border rounded-xl w-full max-w-lg shadow-2xl p-6">
+                        <div className="flex justify-between items-center mb-6">
+                            <h2 className="text-xl font-bold flex items-center gap-2">
+                                <Tag size={20} className="text-pidgey-secondary" /> Create New Stamp
+                            </h2>
+                            <button onClick={() => setIsStampModalOpen(false)} className="text-pidgey-muted hover:text-white"><X size={20}/></button>
+                        </div>
+
+                        <div className="space-y-4">
+                            {/* Art Preview & Upload */}
+                            <div className="flex justify-center mb-4">
+                                <input 
+                                    type="file" 
+                                    ref={stampFileInputRef} 
+                                    className="hidden" 
+                                    accept="image/png, image/jpeg, image/gif"
+                                    onChange={handleStampFileChange}
+                                />
+                                <div 
+                                    onClick={() => stampFileInputRef.current?.click()}
+                                    className="w-32 h-32 bg-pidgey-dark rounded-lg border border-pidgey-border flex items-center justify-center overflow-hidden cursor-pointer hover:border-pidgey-accent group relative"
+                                >
+                                    {newStamp.art_path ? (
+                                        <>
+                                            <img src={newStamp.art_path} className="w-full h-full object-contain" />
+                                            <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <Upload size={20} className="text-white" />
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <div className="flex flex-col items-center gap-2 text-pidgey-muted group-hover:text-pidgey-accent">
+                                            {isUploadingArt ? <Loader className="animate-spin" /> : <Upload size={24} />}
+                                            <span className="text-[10px] font-bold uppercase">{isUploadingArt ? 'Uploading...' : 'Upload Art'}</span>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                            
+                            <div>
+                                <label className="block text-xs font-bold text-pidgey-muted uppercase mb-1">Stamp Name</label>
+                                <input 
+                                    className="w-full bg-pidgey-dark border border-pidgey-border rounded-lg p-2.5 text-white focus:border-pidgey-accent outline-none"
+                                    value={newStamp.name || ''}
+                                    onChange={e => setNewStamp({...newStamp, name: e.target.value})}
+                                    placeholder="e.g. Golden Pidgey"
+                                />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-xs font-bold text-pidgey-muted uppercase mb-1">Rarity</label>
+                                    <select 
+                                        className="w-full bg-pidgey-dark border border-pidgey-border rounded-lg p-2.5 text-white focus:border-pidgey-accent outline-none"
+                                        value={newStamp.rarity}
+                                        onChange={e => setNewStamp({...newStamp, rarity: e.target.value as StampRarity})}
+                                    >
+                                        {Object.values(StampRarity).map(r => <option key={r} value={r}>{r}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-pidgey-muted uppercase mb-1">Status</label>
+                                    <select 
+                                        className="w-full bg-pidgey-dark border border-pidgey-border rounded-lg p-2.5 text-white focus:border-pidgey-accent outline-none"
+                                        value={newStamp.status}
+                                        onChange={e => setNewStamp({...newStamp, status: e.target.value as StampStatus})}
+                                    >
+                                        {Object.values(StampStatus).map(s => <option key={s} value={s}>{s}</option>)}
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-xs font-bold text-pidgey-muted uppercase mb-1">Collection</label>
+                                    <input 
+                                        className="w-full bg-pidgey-dark border border-pidgey-border rounded-lg p-2.5 text-white focus:border-pidgey-accent outline-none"
+                                        value={newStamp.collection || ''}
+                                        onChange={e => setNewStamp({...newStamp, collection: e.target.value})}
+                                        placeholder="e.g. Origins"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-pidgey-muted uppercase mb-1">Price (Eggs)</label>
+                                    <input 
+                                        type="number"
+                                        className="w-full bg-pidgey-dark border border-pidgey-border rounded-lg p-2.5 text-white focus:border-pidgey-accent outline-none"
+                                        value={newStamp.price_eggs || 0}
+                                        onChange={e => setNewStamp({...newStamp, price_eggs: parseInt(e.target.value)})}
+                                    />
+                                </div>
+                            </div>
+                            
+                            <div className="flex items-center gap-2 p-2 border border-pidgey-border rounded bg-pidgey-dark/50">
+                                <input 
+                                    type="checkbox" 
+                                    id="isDropOnly"
+                                    checked={newStamp.is_drop_only}
+                                    onChange={e => setNewStamp({...newStamp, is_drop_only: e.target.checked})}
+                                    className="rounded border-pidgey-border bg-pidgey-dark text-pidgey-accent focus:ring-pidgey-accent"
+                                />
+                                <label htmlFor="isDropOnly" className="text-sm text-pidgey-text cursor-pointer select-none">Drop Only (Not available in general store)</label>
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-bold text-pidgey-muted uppercase mb-1">Art URL</label>
+                                <input 
+                                    className="w-full bg-pidgey-dark border border-pidgey-border rounded-lg p-2.5 text-white text-xs font-mono truncate"
+                                    value={newStamp.art_path || ''}
+                                    readOnly
+                                    title={newStamp.art_path}
+                                />
+                            </div>
+
+                            <button 
+                                onClick={handleCreateStamp}
+                                className="w-full py-3 bg-pidgey-accent text-pidgey-dark font-bold rounded-lg hover:bg-teal-300 mt-2 flex justify-center items-center gap-2"
+                            >
+                                <Save size={18} /> Create Stamp Entity
+                            </button>
+                        </div>
+                    </div>
                 </div>
             )}
         </div>

@@ -12,6 +12,7 @@ export const MOCK_PROFILES: Profile[] = [
     created_at: '2023-01-15T08:00:00Z',
     last_seen: '2023-10-27T14:30:00Z',
     avatar_url: 'https://picsum.photos/seed/alice/200',
+    status: 'active'
   },
   {
     id: 'usr_2',
@@ -23,6 +24,7 @@ export const MOCK_PROFILES: Profile[] = [
     created_at: '2023-02-20T10:15:00Z',
     last_seen: '2023-10-26T09:00:00Z',
     avatar_url: 'https://picsum.photos/seed/hatter/200',
+    status: 'suspended'
   },
   {
     id: 'usr_3',
@@ -34,6 +36,7 @@ export const MOCK_PROFILES: Profile[] = [
     created_at: '2022-12-01T00:00:00Z',
     last_seen: '2023-10-27T16:45:00Z',
     avatar_url: 'https://picsum.photos/seed/queen/200',
+    status: 'active'
   },
   {
     id: 'usr_4',
@@ -45,6 +48,7 @@ export const MOCK_PROFILES: Profile[] = [
     created_at: '2023-03-10T12:00:00Z',
     last_seen: '2023-10-27T11:20:00Z',
     avatar_url: 'https://picsum.photos/seed/cat/200',
+    status: 'active'
   }
 ];
 
