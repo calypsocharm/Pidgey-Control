@@ -1,41 +1,76 @@
-import React, { createContext, useContext, useState, ReactNode, PropsWithChildren } from 'react';
 
-interface JarvisContextType {
-  isOpen: boolean;
-  initialMessage: string;
-  openJarvis: (message?: string) => void;
-  closeJarvis: () => void;
-  clearMessage: () => void;
+import React, { createContext, useContext, useState, PropsWithChildren } from 'react';
+
+export type PidgeyMood = 'idle' | 'thinking' | 'happy' | 'alert';
+
+interface DraftPayload {
+    type: 'DRAFT_DROP' | 'DRAFT_STAMP' | 'DRAFT_PROMO';
+    data: any;
 }
 
-const JarvisContext = createContext<JarvisContextType | undefined>(undefined);
+interface PidgeyContextType {
+  isOpen: boolean;
+  mood: PidgeyMood;
+  initialMessage: string;
+  openPidgey: (message?: string) => void;
+  closePidgey: () => void;
+  setMood: (mood: PidgeyMood) => void;
+  clearMessage: () => void;
+  
+  // Drafting / Actions
+  draftPayload: DraftPayload | null;
+  setDraftPayload: (payload: DraftPayload | null) => void;
+
+  // Memory / Learning
+  memories: string[];
+  learn: (fact: string) => void;
+}
+
+const PidgeyContext = createContext<PidgeyContextType | undefined>(undefined);
 
 export const JarvisProvider: React.FC<PropsWithChildren<{}>> = ({ children }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [initialMessage, setInitialMessage] = useState('');
+  const [mood, setMood] = useState<PidgeyMood>('idle');
+  const [draftPayload, setDraftPayload] = useState<DraftPayload | null>(null);
+  const [memories, setMemories] = useState<string[]>([]);
 
-  const openJarvis = (message: string = '') => {
+  const openPidgey = (message: string = '') => {
     if (message) setInitialMessage(message);
     setIsOpen(true);
+    setMood('happy');
+    // Reset mood after a moment
+    setTimeout(() => setMood('idle'), 2000);
   };
 
-  const closeJarvis = () => {
+  const closePidgey = () => {
     setIsOpen(false);
+    setMood('idle');
   };
 
   const clearMessage = () => {
     setInitialMessage('');
   };
 
+  const learn = (fact: string) => {
+    if (!memories.includes(fact)) {
+        setMemories(prev => [...prev, fact]);
+    }
+  };
+
   return (
-    <JarvisContext.Provider value={{ isOpen, initialMessage, openJarvis, closeJarvis, clearMessage }}>
+    <PidgeyContext.Provider value={{ 
+        isOpen, mood, setMood, initialMessage, openPidgey, closePidgey, clearMessage,
+        draftPayload, setDraftPayload,
+        memories, learn
+    }}>
       {children}
-    </JarvisContext.Provider>
+    </PidgeyContext.Provider>
   );
 };
 
 export const useJarvis = () => {
-  const context = useContext(JarvisContext);
-  if (!context) throw new Error('useJarvis must be used within a JarvisProvider');
+  const context = useContext(PidgeyContext);
+  if (!context) throw new Error('usePidgey must be used within a PidgeyProvider');
   return context;
 };

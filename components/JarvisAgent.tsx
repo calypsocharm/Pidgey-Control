@@ -1,30 +1,31 @@
+
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Send, Bot, Sparkles, AlertTriangle, CheckCircle, BarChart3, RefreshCw } from 'lucide-react';
-import { useLocation } from 'react-router-dom';
-import { getJarvisDailyBrief, chatWithJarvis } from '../services/geminiService';
+import { X, Send, Bird, Sparkles, RefreshCw, CheckCircle2, ArrowRight } from 'lucide-react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { getPidgeyDailyBrief, chatWithPidgey } from '../services/geminiService';
 import { ChatMessage } from '../types';
-import { MOCK_DROPS, MOCK_OPERATIONAL_STATS, MOCK_PROFILES, MOCK_TICKETS, MOCK_CARDS, MOCK_USER_TEMPLATES } from '../constants';
+import { MOCK_DROPS, MOCK_OPERATIONAL_STATS, MOCK_TICKETS, MOCK_PROFILES } from '../constants';
 import { useJarvis } from '../JarvisContext';
 import { PUBLIC_SCHEMA_DDL } from '../schema';
 import { supabase } from '../services/supabaseClient';
 
 export const JarvisAgent: React.FC = () => {
-    const { isOpen, closeJarvis, initialMessage, clearMessage } = useJarvis();
-    const [activeTab, setActiveTab] = useState<'brief' | 'chat'>('brief');
+    const { isOpen, closePidgey, initialMessage, clearMessage, mood, setMood, setDraftPayload, memories, learn } = useJarvis();
+    const [activeTab, setActiveTab] = useState<'today' | 'chat'>('today');
     const [brief, setBrief] = useState<string>('');
     const [isLoadingBrief, setIsLoadingBrief] = useState(false);
     
     const [messages, setMessages] = useState<ChatMessage[]>([
-        { id: '1', role: 'assistant', content: 'Hello Admin. Pidgey JARVIS online. How can I assist with operations today?', timestamp: new Date() }
+        { id: '1', role: 'assistant', content: "Peep! I'm Pidgey. How's the nest looking today?", timestamp: new Date() }
     ]);
     const [input, setInput] = useState('');
     const [isTyping, setIsTyping] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const location = useLocation();
+    const navigate = useNavigate();
 
     // Construct Context for AI
     const getSystemContext = async () => {
-        // Fetch real data for Jarvis context
         let userCount = MOCK_PROFILES.length;
         let recentProfiles = [];
         
@@ -40,13 +41,12 @@ export const JarvisAgent: React.FC = () => {
             operational: MOCK_OPERATIONAL_STATS,
             userCount: userCount,
             recentProfiles: recentProfiles.map(p => ({ id: p.id, role: p.role, tier: p.tier })),
-            recentCards: MOCK_CARDS.slice(0, 5),
-            templates: MOCK_USER_TEMPLATES.slice(0, 5)
+            memories: memories // Pass learned facts
         };
     };
 
     useEffect(() => {
-        if (isOpen && activeTab === 'brief' && !brief) {
+        if (isOpen && activeTab === 'today' && !brief) {
             loadBrief();
         }
     }, [isOpen, activeTab]);
@@ -57,11 +57,9 @@ export const JarvisAgent: React.FC = () => {
         }
     }, [messages, activeTab]);
 
-    // Handle Inline Helper Intents
     useEffect(() => {
         if (isOpen && initialMessage) {
             setActiveTab('chat');
-            // Auto-send the inline helper message
             handleSendMessage(initialMessage);
             clearMessage();
         }
@@ -73,20 +71,18 @@ export const JarvisAgent: React.FC = () => {
 
     const loadBrief = async () => {
         setIsLoadingBrief(true);
+        setMood('thinking');
         const context = await getSystemContext();
-        const text = await getJarvisDailyBrief(context);
+        const text = await getPidgeyDailyBrief(context);
         setBrief(text);
+        setMood('happy');
         setIsLoadingBrief(false);
     };
 
     const handleSendMessage = async (msgText: string = input) => {
         if (!msgText.trim()) return;
 
-        // If triggered via function, we don't clear input, we just use the arg
-        // If triggered via UI, we clear input
-        if (msgText === input) {
-             setInput('');
-        }
+        if (msgText === input) setInput('');
 
         const userMsg: ChatMessage = {
             id: Date.now().toString(),
@@ -97,141 +93,203 @@ export const JarvisAgent: React.FC = () => {
 
         setMessages(prev => [...prev, userMsg]);
         setIsTyping(true);
+        setMood('thinking');
 
         const context = await getSystemContext();
-        const responseText = await chatWithJarvis(msgText, context);
+        let responseText = await chatWithPidgey(msgText, context);
+
+        // 1. Parse Memories
+        const learnRegex = /\[\[LEARNED:\s*(.*?)\]\]/g;
+        let match;
+        while ((match = learnRegex.exec(responseText)) !== null) {
+            const fact = match[1];
+            learn(fact);
+            console.log("Pidgey learned:", fact);
+        }
+        responseText = responseText.replace(learnRegex, '').trim();
+
+        // 2. Parse Actions
+        const actionRegex = /\$\$ACTION:(.*?):(.*?)\$\$/;
+        const actionMatch = responseText.match(actionRegex);
+        
+        let actionData = null;
+        if (actionMatch) {
+            try {
+                const actionType = actionMatch[1] as any;
+                const actionPayload = JSON.parse(actionMatch[2]);
+                actionData = { type: actionType, payload: actionPayload };
+                responseText = responseText.replace(actionRegex, '').trim();
+            } catch (e) {
+                console.error("Failed to parse action", e);
+            }
+        }
 
         const botMsg: ChatMessage = {
             id: (Date.now() + 1).toString(),
             role: 'assistant',
             content: responseText,
-            timestamp: new Date()
+            timestamp: new Date(),
+            action: actionData
         };
 
         setMessages(prev => [...prev, botMsg]);
         setIsTyping(false);
+        setMood('idle');
+    };
+
+    const handleReviewAction = (action: any) => {
+        if (action.type === 'DRAFT_DROP' || action.type === 'DRAFT_STAMP') {
+            setDraftPayload({ type: action.type, data: action.payload });
+            navigate('/drops');
+            closePidgey();
+        } else if (action.type === 'DRAFT_PROMO') {
+            setDraftPayload({ type: action.type, data: action.payload });
+            navigate('/promos');
+            closePidgey();
+        }
+    };
+
+    const getActionTitle = (action: any) => {
+        switch(action.type) {
+            case 'DRAFT_DROP': return `Drop: ${action.payload.title}`;
+            case 'DRAFT_STAMP': return `Stamp: ${action.payload.name}`;
+            case 'DRAFT_PROMO': return `Promo: ${action.payload.code}`;
+            default: return 'Draft Item';
+        }
     };
 
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-y-0 right-0 w-96 bg-pidgey-dark border-l border-pidgey-border shadow-2xl z-50 flex flex-col transform transition-transform duration-300 ease-in-out">
+        <div className="fixed inset-y-0 right-0 w-[400px] bg-pidgey-dark border-l border-pidgey-border shadow-2xl z-50 flex flex-col transform transition-transform duration-300 ease-in-out font-sans">
             {/* Header */}
-            <div className="p-4 border-b border-pidgey-border flex items-center justify-between bg-pidgey-panel">
-                <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded bg-gradient-to-br from-pidgey-accent to-blue-600 flex items-center justify-center">
-                        <Bot className="text-white" size={20} />
+            <div className="p-4 border-b border-pidgey-border flex items-center justify-between bg-pidgey-panel/50 backdrop-blur">
+                <div className="flex items-center gap-3">
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors duration-500 ${
+                        mood === 'thinking' ? 'bg-purple-500/20 text-purple-400 animate-pulse' : 
+                        mood === 'happy' ? 'bg-pidgey-accent text-pidgey-dark' : 
+                        'bg-pidgey-accent/20 text-pidgey-accent'
+                    }`}>
+                        <Bird size={24} className={mood === 'happy' ? 'animate-bounce' : ''} />
                     </div>
                     <div>
-                        <h3 className="font-bold text-white leading-none">Pidgey JARVIS</h3>
-                        <span className="text-[10px] text-pidgey-accent uppercase tracking-wider font-bold">Ops Copilot v1.0</span>
+                        <h3 className="font-bold text-white text-lg leading-none">Pidgey</h3>
+                        <span className="text-[11px] text-pidgey-muted font-medium">Ops Copilot</span>
                     </div>
                 </div>
-                <button onClick={closeJarvis} className="text-pidgey-muted hover:text-white transition-colors">
+                <button onClick={closePidgey} className="p-2 hover:bg-white/5 rounded-full text-pidgey-muted hover:text-white transition-colors">
                     <X size={20} />
                 </button>
             </div>
 
-            {/* Tabs */}
-            <div className="flex border-b border-pidgey-border">
+            {/* Navigation */}
+            <div className="flex p-2 gap-2 border-b border-pidgey-border bg-pidgey-dark">
                 <button 
-                    onClick={() => setActiveTab('brief')}
-                    className={`flex-1 py-3 text-sm font-medium transition-colors relative ${
-                        activeTab === 'brief' ? 'text-white' : 'text-pidgey-muted hover:text-white'
+                    onClick={() => setActiveTab('today')}
+                    className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-2 ${
+                        activeTab === 'today' 
+                            ? 'bg-pidgey-panel text-white shadow-sm ring-1 ring-pidgey-border' 
+                            : 'text-pidgey-muted hover:text-white hover:bg-pidgey-panel/50'
                     }`}
                 >
-                    <span className="flex items-center justify-center gap-2">
-                        <BarChart3 size={16} /> Daily Brief
-                    </span>
-                    {activeTab === 'brief' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-pidgey-accent"></div>}
+                    <CheckCircle2 size={16} /> Today
                 </button>
                 <button 
                     onClick={() => setActiveTab('chat')}
-                    className={`flex-1 py-3 text-sm font-medium transition-colors relative ${
-                        activeTab === 'chat' ? 'text-white' : 'text-pidgey-muted hover:text-white'
+                    className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all flex items-center justify-center gap-2 ${
+                        activeTab === 'chat' 
+                            ? 'bg-pidgey-panel text-white shadow-sm ring-1 ring-pidgey-border' 
+                            : 'text-pidgey-muted hover:text-white hover:bg-pidgey-panel/50'
                     }`}
                 >
-                    <span className="flex items-center justify-center gap-2">
-                        <Sparkles size={16} /> Chat
-                    </span>
-                    {activeTab === 'chat' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-pidgey-accent"></div>}
+                    <Sparkles size={16} /> Ask Pidgey
                 </button>
             </div>
 
-            {/* Content Area */}
+            {/* Content */}
             <div className="flex-1 overflow-y-auto bg-pidgey-dark scrollbar-thin">
-                {activeTab === 'brief' ? (
-                    <div className="p-6 space-y-6">
+                {activeTab === 'today' ? (
+                    <div className="p-6">
                         {isLoadingBrief ? (
-                             <div className="flex flex-col items-center justify-center h-64 text-pidgey-muted animate-pulse">
-                                <Bot size={48} className="mb-4 text-pidgey-border" />
-                                <p>Analyzing system telemetry...</p>
+                             <div className="flex flex-col items-center justify-center h-64 text-pidgey-muted text-center space-y-4">
+                                <Bird size={48} className="text-pidgey-accent/50 animate-bounce" />
+                                <p className="text-sm">Flying around checking the nests...</p>
                             </div>
                         ) : (
-                            <div className="prose prose-invert prose-sm max-w-none">
-                                <div className="flex justify-between items-center mb-4">
-                                    <span className="text-xs text-pidgey-muted uppercase tracking-wider">{new Date().toLocaleDateString()}</span>
-                                    <button onClick={loadBrief} className="text-xs text-pidgey-accent hover:underline flex items-center gap-1">
-                                        <RefreshCw size={12} /> Refresh
-                                    </button>
+                            <div className="space-y-6">
+                                <div className="prose prose-invert prose-sm max-w-none">
+                                    <div dangerouslySetInnerHTML={{ 
+                                        __html: brief
+                                            .replace(/\n/g, '<br/>')
+                                            .replace(/\*\*(.*?)\*\*/g, '<strong class="text-pidgey-accent">$1</strong>')
+                                            .replace(/^# (.*$)/gim, '<h1 class="text-xl font-bold text-white mb-2">$1</h1>')
+                                            .replace(/^## (.*$)/gim, '<h2 class="text-lg font-bold text-white mt-4 mb-2 border-b border-pidgey-border pb-1">$1</h2>')
+                                            .replace(/^- (.*$)/gim, '<li class="flex gap-2 items-start text-pidgey-text/90 my-2"><span class="text-pidgey-accent mt-1">•</span><span>$1</span></li>')
+                                            .replace(/^\d\.\s(.*$)/gim, '<div class="bg-pidgey-panel border border-pidgey-border rounded-lg p-3 my-3 shadow-sm"><div class="font-medium">$1</div></div>')
+                                    }} />
                                 </div>
-                                <div dangerouslySetInnerHTML={{ 
-                                    __html: brief
-                                        .replace(/\n/g, '<br/>')
-                                        .replace(/\*\*(.*?)\*\*/g, '<strong class="text-white">$1</strong>')
-                                        .replace(/^# (.*$)/gim, '<h1 class="text-lg font-bold text-pidgey-accent mb-2">$1</h1>')
-                                        .replace(/^## (.*$)/gim, '<h2 class="text-md font-bold text-pidgey-text mt-4 mb-2">$1</h2>')
-                                        .replace(/^- (.*$)/gim, '<li class="ml-4 list-disc text-pidgey-muted">$1</li>')
-                                }} />
+                                <button 
+                                    onClick={loadBrief} 
+                                    className="w-full py-3 mt-4 border border-dashed border-pidgey-border rounded-xl text-xs text-pidgey-muted hover:text-pidgey-accent hover:border-pidgey-accent transition flex items-center justify-center gap-2"
+                                >
+                                    <RefreshCw size={14} /> Refresh Brief
+                                </button>
                             </div>
                         )}
-                        
-                        {/* Static Quick Actions for Demo */}
-                        <div className="pt-4 border-t border-pidgey-border">
-                            <h4 className="text-xs font-bold text-pidgey-muted uppercase mb-3">Recommended Actions</h4>
-                            <div className="space-y-2">
-                                <button className="w-full text-left p-3 rounded-lg bg-pidgey-panel border border-pidgey-border hover:border-red-500/50 transition flex items-start gap-3">
-                                    <AlertTriangle className="text-red-400 shrink-0 mt-0.5" size={16} />
-                                    <div>
-                                        <div className="text-sm font-medium text-white">Review Abandoned Carts</div>
-                                        <div className="text-xs text-pidgey-muted">7 users waiting ($850 value)</div>
-                                    </div>
-                                </button>
-                                <button className="w-full text-left p-3 rounded-lg bg-pidgey-panel border border-pidgey-border hover:border-yellow-500/50 transition flex items-start gap-3">
-                                    <AlertTriangle className="text-yellow-400 shrink-0 mt-0.5" size={16} />
-                                    <div>
-                                        <div className="text-sm font-medium text-white">Check Webhooks</div>
-                                        <div className="text-xs text-pidgey-muted">2 recent failures detected</div>
-                                    </div>
-                                </button>
-                            </div>
-                        </div>
                     </div>
                 ) : (
                     <div className="flex flex-col h-full">
                         <div className="flex-1 p-4 space-y-4">
                             {messages.map((msg) => (
-                                <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                                    <div className={`max-w-[85%] rounded-xl p-3 text-sm ${
-                                        msg.role === 'user' 
-                                            ? 'bg-pidgey-accent text-pidgey-dark font-medium' 
-                                            : 'bg-pidgey-panel border border-pidgey-border text-pidgey-text'
-                                    }`}>
-                                        <div dangerouslySetInnerHTML={{ 
-                                            __html: msg.content.replace(/\n/g, '<br/>') 
-                                        }} />
-                                        <div className={`text-[10px] mt-1 opacity-70 ${msg.role === 'user' ? 'text-pidgey-dark' : 'text-pidgey-muted'}`}>
-                                            {msg.timestamp.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                                <div key={msg.id} className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
+                                    <div className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                                        {msg.role === 'assistant' && (
+                                            <div className="w-8 h-8 rounded-full bg-pidgey-accent/20 flex items-center justify-center mr-2 mt-1 flex-shrink-0">
+                                                <Bird size={16} className="text-pidgey-accent" />
+                                            </div>
+                                        )}
+                                        <div className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm ${
+                                            msg.role === 'user' 
+                                                ? 'bg-pidgey-accent text-pidgey-dark font-medium rounded-tr-sm' 
+                                                : 'bg-pidgey-panel border border-pidgey-border text-pidgey-text rounded-tl-sm'
+                                        }`}>
+                                            <div dangerouslySetInnerHTML={{ 
+                                                __html: msg.content.replace(/\n/g, '<br/>') 
+                                            }} />
                                         </div>
                                     </div>
+                                    
+                                    {/* Action Card */}
+                                    {msg.action && (
+                                        <div className="mt-2 ml-10 max-w-[85%] bg-pidgey-panel border border-pidgey-accent/50 rounded-xl p-4 shadow-lg animate-in slide-in-from-left-4 fade-in duration-500">
+                                            <div className="flex items-center gap-2 mb-2 text-pidgey-accent font-bold uppercase text-xs tracking-wider">
+                                                <Sparkles size={14} /> Draft Created
+                                            </div>
+                                            <p className="text-sm font-bold mb-1">
+                                                {getActionTitle(msg.action)}
+                                            </p>
+                                            <p className="text-xs text-pidgey-muted mb-3">
+                                                Ready for your review. I've pre-filled the details.
+                                            </p>
+                                            <button 
+                                                onClick={() => handleReviewAction(msg.action)}
+                                                className="w-full py-2 bg-pidgey-accent text-pidgey-dark font-bold rounded-lg hover:bg-teal-300 transition flex items-center justify-center gap-2 text-sm"
+                                            >
+                                                Review Now <ArrowRight size={16} />
+                                            </button>
+                                        </div>
+                                    )}
                                 </div>
                             ))}
                             {isTyping && (
-                                <div className="flex justify-start">
-                                    <div className="bg-pidgey-panel border border-pidgey-border rounded-xl p-3 flex gap-1">
-                                        <span className="w-2 h-2 bg-pidgey-muted rounded-full animate-bounce"></span>
-                                        <span className="w-2 h-2 bg-pidgey-muted rounded-full animate-bounce delay-100"></span>
-                                        <span className="w-2 h-2 bg-pidgey-muted rounded-full animate-bounce delay-200"></span>
+                                <div className="flex justify-start items-center gap-2">
+                                    <div className="w-8 h-8 rounded-full bg-pidgey-accent/20 flex items-center justify-center">
+                                        <Bird size={16} className="text-pidgey-accent animate-pulse" />
+                                    </div>
+                                    <div className="bg-pidgey-panel border border-pidgey-border rounded-2xl rounded-tl-sm px-4 py-3 flex gap-1">
+                                        <span className="w-1.5 h-1.5 bg-pidgey-muted rounded-full animate-bounce"></span>
+                                        <span className="w-1.5 h-1.5 bg-pidgey-muted rounded-full animate-bounce delay-100"></span>
+                                        <span className="w-1.5 h-1.5 bg-pidgey-muted rounded-full animate-bounce delay-200"></span>
                                     </div>
                                 </div>
                             )}
@@ -246,28 +304,17 @@ export const JarvisAgent: React.FC = () => {
                                     value={input}
                                     onChange={(e) => setInput(e.target.value)}
                                     onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
-                                    placeholder="Ask Jarvis..."
-                                    className="w-full bg-pidgey-dark border border-pidgey-border rounded-lg pl-4 pr-12 py-3 text-sm focus:outline-none focus:border-pidgey-accent text-white placeholder-pidgey-muted"
+                                    placeholder="Ask Pidgey..."
+                                    className="w-full bg-pidgey-dark border border-pidgey-border rounded-xl pl-4 pr-12 py-3 text-sm focus:outline-none focus:border-pidgey-accent focus:ring-1 focus:ring-pidgey-accent text-white placeholder-pidgey-muted transition-all"
                                 />
                                 <button 
                                     onClick={() => handleSendMessage()}
                                     disabled={!input.trim() || isTyping}
-                                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 bg-pidgey-accent text-pidgey-dark rounded hover:bg-teal-300 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 bg-pidgey-accent text-pidgey-dark rounded-lg hover:bg-teal-300 transition disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
                                     <Send size={16} />
                                 </button>
                             </div>
-                             <div className="mt-2 flex gap-2 overflow-x-auto pb-1 scrollbar-none">
-                                {['Show revenue', 'List errors', 'Analyze drops', 'Help me triage'].map(suggestion => (
-                                    <button 
-                                        key={suggestion}
-                                        onClick={() => setInput(suggestion)}
-                                        className="whitespace-nowrap px-2 py-1 rounded bg-pidgey-dark border border-pidgey-border text-xs text-pidgey-muted hover:text-pidgey-text hover:border-pidgey-muted transition"
-                                    >
-                                        {suggestion}
-                                    </button>
-                                ))}
-                             </div>
                         </div>
                     </div>
                 )}

@@ -1,8 +1,11 @@
-import React from 'react';
-import { LayoutDashboard, Users, Egg, StickyNote, Mail, FolderOpen, Settings, LogOut, Search, Bell, Bot } from 'lucide-react';
+
+import React, { useState, useEffect } from 'react';
+import { LayoutDashboard, Users, Egg, StickyNote, Mail, FolderOpen, Settings, LogOut, Search, Bell, Bird, Activity, Plane, Palette, Shield, ShieldAlert, Zap } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 import { JarvisAgent } from './JarvisAgent';
 import { useJarvis } from '../JarvisContext';
+import { useAuth } from '../AuthContext';
+import { useSafeMode } from '../SafeModeContext';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -28,10 +31,31 @@ const NavItem = ({ to, icon: Icon, label }: { to: string; icon: any; label: stri
 };
 
 export const Layout: React.FC<LayoutProps> = ({ children }) => {
-  const { openJarvis, isOpen } = useJarvis();
+  const { openPidgey, isOpen, mood } = useJarvis();
+  const { logout } = useAuth();
+  const { isSafeMode, toggleSafeMode } = useSafeMode();
+  
+  // Simulated System Pulse
+  const [systemHealth, setSystemHealth] = useState<'healthy' | 'error'>('healthy');
+  const [lastLog, setLastLog] = useState('System operational');
+
+  useEffect(() => {
+    // Randomly generate "activity"
+    const interval = setInterval(() => {
+        const r = Math.random();
+        if (r > 0.95) {
+            setSystemHealth('error');
+            setLastLog('⚠️ Webhook timeout: smtp2go-relay');
+            setTimeout(() => setSystemHealth('healthy'), 4000);
+        } else if (r > 0.7) {
+            setLastLog('Info: Batch email job completed (140ms)');
+        }
+    }, 5000);
+    return () => clearInterval(interval);
+  }, []);
 
   return (
-    <div className="flex h-screen bg-pidgey-dark overflow-hidden text-pidgey-text font-sans relative">
+    <div className={`flex h-screen bg-pidgey-dark overflow-hidden text-pidgey-text font-sans relative ${!isSafeMode ? 'border-4 border-red-500/20' : ''}`}>
       {/* Sidebar */}
       <aside className="w-64 flex-shrink-0 border-r border-pidgey-border flex flex-col bg-pidgey-dark z-20">
         <div className="p-6 flex items-center gap-3">
@@ -48,12 +72,15 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
           <NavItem to="/" icon={LayoutDashboard} label="Overview" />
           <NavItem to="/members" icon={Users} label="Members" />
           <NavItem to="/drops" icon={Egg} label="Drops & Stamps" />
+          <NavItem to="/playground" icon={Palette} label="Playground" />
           
           <div className="text-xs font-semibold text-pidgey-muted uppercase tracking-wider mb-2 mt-6 px-4">
             Operations
           </div>
+          <NavItem to="/flight-path" icon={Plane} label="Flight Path" />
           <NavItem to="/support" icon={Mail} label="Support" />
           <NavItem to="/broadcasts" icon={Bell} label="Broadcasts" />
+          <NavItem to="/deliveries" icon={Activity} label="Message Health" />
           <NavItem to="/promos" icon={StickyNote} label="Promos" />
           
           <div className="text-xs font-semibold text-pidgey-muted uppercase tracking-wider mb-2 mt-6 px-4">
@@ -64,7 +91,10 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
         </nav>
 
         <div className="p-4 border-t border-pidgey-border">
-          <button className="flex items-center gap-3 px-4 py-2 w-full text-pidgey-muted hover:text-red-400 hover:bg-red-900/10 rounded-lg transition-colors">
+          <button 
+            onClick={logout}
+            className="flex items-center gap-3 px-4 py-2 w-full text-pidgey-muted hover:text-red-400 hover:bg-red-900/10 rounded-lg transition-colors"
+          >
             <LogOut size={18} />
             <span>Sign Out</span>
           </button>
@@ -84,7 +114,31 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
             />
           </div>
           
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-6">
+            {/* Safe Mode Toggle */}
+            <div className="flex items-center gap-3 bg-pidgey-panel rounded-full p-1 border border-pidgey-border">
+                <button 
+                    onClick={toggleSafeMode}
+                    className={`px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-2 transition-all ${
+                        isSafeMode 
+                        ? 'bg-pidgey-accent text-pidgey-dark shadow-sm' 
+                        : 'text-pidgey-muted hover:text-white'
+                    }`}
+                >
+                    <Shield size={14} /> SAFE
+                </button>
+                <button 
+                    onClick={toggleSafeMode}
+                    className={`px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-2 transition-all ${
+                        !isSafeMode 
+                        ? 'bg-red-500 text-white shadow-sm animate-pulse' 
+                        : 'text-pidgey-muted hover:text-white'
+                    }`}
+                >
+                    <ShieldAlert size={14} /> GOD MODE
+                </button>
+            </div>
+
             <button className="relative p-2 text-pidgey-muted hover:text-pidgey-text rounded-full hover:bg-pidgey-panel">
                 <Bell size={20} />
                 <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-pidgey-secondary rounded-full"></span>
@@ -96,20 +150,44 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
         </header>
 
         {/* Page Content */}
-        <main className="flex-1 overflow-y-auto p-8">
+        <main className="flex-1 overflow-y-auto p-8 pb-12">
           {children}
         </main>
+        
+        {/* System Pulse Footer */}
+        <div className="absolute bottom-0 left-0 right-0 h-8 bg-pidgey-dark border-t border-pidgey-border flex items-center px-4 justify-between text-[10px] uppercase font-bold tracking-wider z-20">
+            <div className="flex items-center gap-2">
+                <Activity size={12} className={systemHealth === 'healthy' ? 'text-green-500' : 'text-red-500 animate-bounce'} />
+                <span className={systemHealth === 'healthy' ? 'text-pidgey-muted' : 'text-red-400'}>
+                    {lastLog}
+                </span>
+            </div>
+            <div className="flex items-center gap-4 text-pidgey-muted">
+                <span className="flex items-center gap-1"><Zap size={10} className="text-yellow-400" /> 14ms latency</span>
+                <span>v1.2.0-rc4</span>
+            </div>
+        </div>
 
-        {/* Floating JARVIS Trigger */}
+        {/* Floating Pidgey Bubble */}
         <button 
-            onClick={() => openJarvis()}
-            className={`absolute bottom-8 right-8 w-14 h-14 rounded-full bg-gradient-to-r from-pidgey-secondary to-purple-600 shadow-lg shadow-purple-900/50 flex items-center justify-center text-white hover:scale-105 transition-transform z-40 ${isOpen ? 'hidden' : 'flex'}`}
+            onClick={() => openPidgey()}
+            className={`absolute bottom-12 right-8 w-16 h-16 rounded-full shadow-lg shadow-purple-900/50 flex items-center justify-center text-pidgey-dark hover:scale-105 transition-all z-40 group ${
+                isOpen ? 'hidden' : 'flex'
+            } ${
+                mood === 'thinking' ? 'bg-purple-400 animate-pulse' : 
+                mood === 'happy' ? 'bg-pidgey-accent animate-bounce' : 
+                'bg-gradient-to-tr from-pidgey-accent to-pidgey-secondary'
+            }`}
         >
-            <Bot size={28} />
+            <Bird size={32} className={`transition-transform ${mood === 'idle' ? 'group-hover:rotate-12' : ''}`} />
+            {/* Status Dot */}
+            <span className="absolute top-0 right-0 w-4 h-4 bg-red-500 rounded-full border-2 border-pidgey-dark flex items-center justify-center">
+                 <span className="w-1.5 h-1.5 bg-white rounded-full animate-ping"></span>
+            </span>
         </button>
       </div>
 
-      {/* JARVIS Overlay */}
+      {/* Pidgey Drawer */}
       <JarvisAgent />
     </div>
   );

@@ -1,3 +1,4 @@
+
 // Enums matching DB constraints
 export enum Role {
   USER = 'user',
@@ -37,10 +38,138 @@ export enum StampRarity {
   COMMON = 'Common',
   RARE = 'Rare',
   LEGENDARY = 'Legendary',
-  PIDGEY = 'Pidgey', // Special ultra rare
+  PIDGEY = 'Pidgey',
 }
 
-// Interfaces mirroring DB Tables
+export enum StampStatus {
+  ACTIVE = 'active',
+  ARCHIVED = 'archived',
+  TEST = 'test',
+}
+
+// Broadcasts
+export enum BroadcastStatus {
+  DRAFT = 'draft',
+  SCHEDULED = 'scheduled',
+  SENDING = 'sending',
+  SENT = 'sent',
+  CANCELLED = 'cancelled'
+}
+
+export enum BroadcastChannel {
+  EMAIL = 'email',
+  SMS = 'sms',
+  PUSH = 'push'
+}
+
+export interface Broadcast {
+  id: string;
+  name: string;
+  subject?: string;
+  channels: BroadcastChannel[];
+  audience_segment: string;
+  audience_size?: number;
+  scheduled_at?: string;
+  status: BroadcastStatus;
+  stats?: {
+    delivered: number;
+    opened: number;
+    clicked: number;
+    failed: number;
+  };
+  created_at: string;
+}
+
+// Promos
+export enum PromoType {
+  DISCOUNT = 'discount',
+  EGG_BONUS = 'egg_bonus',
+  FREE_STAMP = 'free_stamp',
+  SEASONAL = 'seasonal_event'
+}
+
+export enum PromoStatus {
+  DRAFT = 'draft',
+  ACTIVE = 'active',
+  PAUSED = 'paused',
+  EXPIRED = 'expired'
+}
+
+export interface Promo {
+  id?: string; // Optional for drafting
+  name: string;
+  code: string;
+  type: PromoType;
+  status: PromoStatus;
+  description?: string;
+  value: any; // e.g. { percent: 10 } or { eggs: 5 }
+  start_at?: string;
+  end_at?: string;
+  usage_count: number;
+  created_at?: string;
+}
+
+// Assets
+export enum AssetType {
+  IMAGE = 'image',
+  STAMP_ART = 'stamp_art',
+  CARD_TEMPLATE = 'card_template',
+  ICON = 'icon'
+}
+
+export interface Asset {
+  id: string;
+  name: string;
+  url: string;
+  type: AssetType;
+  size_kb: number;
+  tags: string[];
+  usage_count: number; 
+  created_at: string;
+}
+
+// Deliveries (Message Health) & Flight Path
+export enum DeliveryStatus {
+    QUEUED = 'queued',
+    SENT = 'sent',
+    DELIVERED = 'delivered',
+    OPENED = 'opened',
+    CLICKED = 'clicked',
+    BOUNCED = 'bounced',
+    FAILED = 'failed',
+    CARD_VIEWED = 'card_viewed',
+    CARD_NOT_FOUND = 'card_not_found', // The "Lost Pidgey" scenario
+    RENDER_ERROR = 'render_error',
+    // New Flight Path Statuses
+    REFERRAL_CLICKED = 'referral_clicked',
+    REFERRAL_CONVERTED = 'referral_converted',
+    MEMORY_SAVED = 'memory_saved',
+    // Rescue Statuses
+    RESCUED = 'rescued', // Rerouted manually by admin
+    RETURNED_TO_SENDER = 'returned_to_sender' // Refunded and notified
+}
+
+export interface MessageEvent {
+    id: string;
+    message_id: string; // The Send ID
+    recipient: string;
+    channel: BroadcastChannel;
+    status: DeliveryStatus;
+    timestamp: string;
+    meta?: any; // Error codes, user agent, referral_id, memory_id etc.
+}
+
+export interface DeliveryJourney {
+    message_id: string;
+    recipient: string;
+    channel: BroadcastChannel;
+    current_status: DeliveryStatus;
+    started_at: string;
+    updated_at: string;
+    events: MessageEvent[];
+}
+
+// Database Entities
 
 export interface EggBalance {
   mystery: number;
@@ -48,79 +177,105 @@ export interface EggBalance {
   standard: number;
 }
 
-export interface Profile {
-  id: string;
-  email: string | null; // Nullable in DB
-  full_name: string | null; // Nullable in DB
-  role: Role; // text in DB
-  tier: Tier; // text in DB
-  egg_balance: EggBalance; // jsonb
-  created_at: string | null; // timestamptz nullable
-  last_seen: string | null; // timestamptz nullable
-  avatar_url?: string; // Virtual field for UI
+export interface Transaction {
+    id: string;
+    profile_id: string;
+    amount: number;
+    currency: 'USD' | 'EUR';
+    description: string;
+    status: 'succeeded' | 'refunded' | 'failed';
+    created_at: string;
 }
 
-export interface Artist {
+export interface Profile {
   id: string;
-  name: string;
-  bio: string;
-  website: string;
-  revenue_split: number;
-  is_active: boolean;
+  email: string | null;
+  full_name: string | null;
+  role: Role;
+  tier: Tier;
+  egg_balance: EggBalance;
+  created_at: string | null;
+  last_seen: string | null;
+  avatar_url?: string; // Virtual UI field
+  status?: 'active' | 'banned' | 'suspended'; // UI status
+  
+  // Player 360 Stats (Virtual)
+  stats?: {
+      sends: number;
+      hatches: number;
+      streak: number;
+      stamps_owned: number;
+      last_active_relative: string;
+  };
+  flags?: {
+      churn_risk?: boolean;
+      high_support?: boolean;
+      whale?: boolean;
+  };
+  
+  // Recent Activity Log (Virtual)
+  activity_log?: {
+      type: 'send' | 'hatch' | 'login' | 'error';
+      desc: string;
+      date: string;
+  }[];
+  
+  // Economy History (Virtual)
+  economy_log?: {
+      amount: number;
+      currency: 'eggs' | 'coins';
+      reason: string;
+      date: string;
+  }[];
 }
 
 export interface Stamp {
-  id: string;
+  id?: string; // Optional for drafting
   name: string;
-  slug: string;
+  slug?: string;
   rarity: StampRarity;
-  collection: string;
+  status: StampStatus;
+  collection?: string;
   artist_id?: string;
   price_eggs?: number;
-  is_drop_only: boolean;
-  art_path: string; // URL in frontend context
+  is_drop_only?: boolean;
+  art_path: string;
+  created_at?: string;
 }
 
 export interface Drop {
-  id: string;
+  id?: string; // Optional for drafting
   title: string;
   description: string;
   artist_id: string;
   egg_price: number;
+  bundle_price?: number; // Price to buy the whole collection
   max_supply?: number;
   status: DropStatus;
   start_at: string;
   end_at: string;
-  banner_path: string; // URL
+  banner_path: string;
+  created_at?: string;
+  
+  // UI Helper for the Builder Workflow
+  stamps?: Partial<Stamp>[];
 }
 
 export interface Card {
   id: string;
-  owner_id: string | null; // text nullable in DB
-  data: any; // JSONB content
+  owner_id: string | null;
+  data: any;
   created_at: string | null;
   updated_at: string | null;
 }
 
 export interface UserTemplate {
   id: string;
-  owner_id: string | null; // text nullable in DB
-  template_id: string | null; // text nullable in DB
+  owner_id: string | null;
+  template_id: string | null;
   template_data: any;
   created_at: string | null;
   updated_at: string | null;
-}
-
-export interface Ticket {
-  id: string;
-  profile_id: string;
-  subject: string;
-  status: TicketStatus;
-  priority: TicketPriority;
-  source: string;
-  tags: string[];
-  created_at: string;
-  messages: TicketMessage[]; // Joined for UI convenience
 }
 
 export interface TicketMessage {
@@ -132,11 +287,16 @@ export interface TicketMessage {
   created_at: string;
 }
 
-export interface StatMetric {
-  label: string;
-  value: string | number;
-  change: number; // Percentage
-  trend: 'up' | 'down' | 'neutral';
+export interface Ticket {
+  id: string;
+  profile_id: string;
+  subject: string;
+  status: TicketStatus;
+  priority: TicketPriority;
+  source: string;
+  tags: string[];
+  created_at: string;
+  messages: TicketMessage[]; // Virtual join
 }
 
 export interface ChatMessage {
@@ -144,4 +304,8 @@ export interface ChatMessage {
     role: 'user' | 'assistant';
     content: string;
     timestamp: Date;
+    action?: {
+        type: 'DRAFT_DROP' | 'DRAFT_STAMP' | 'DRAFT_PROMO';
+        payload: any;
+    }
 }
