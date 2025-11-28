@@ -1,68 +1,82 @@
-
 import React, { useState, useEffect, useRef } from 'react';
-import { FolderOpen, Image as ImageIcon, FileText, Grid, List, Download, Trash2, Search, Upload, Sparkles, Loader, Plus, X, Save, Tag, RefreshCw, Database } from 'lucide-react';
+import { FolderOpen, Image as ImageIcon, FileText, Grid, List, Download, Trash2, Search, Upload, Sparkles, Loader, Plus, X, Save, Tag, RefreshCw, AlertTriangle } from 'lucide-react';
 import { AdminService } from '../services/adminService';
 import { generateTagsForAsset } from '../services/geminiService';
 import { Asset, AssetType, Stamp, StampRarity, StampStatus } from '../types';
 import { useSafeMode } from '../SafeModeContext';
 
-// Fix: Extract FileCard and type it as React.FC to allow 'key' prop without TS error
-const FileCard: React.FC<{ file: Asset, onAutoTag: (file: Asset) => void, isTagging: boolean, onDelete: (file: Asset) => void, isSafeMode: boolean, onSelect?: (file: Asset) => void }> = ({ file, onAutoTag, isTagging, onDelete, isSafeMode, onSelect }) => (
-    <div className="group bg-pidgey-panel border border-pidgey-border rounded-xl overflow-hidden hover:border-pidgey-muted transition-colors relative">
-        <div className="aspect-square bg-pidgey-dark relative overflow-hidden flex items-center justify-center p-4">
-            {file.type === AssetType.IMAGE || file.type === AssetType.STAMP_ART || file.type === AssetType.ICON || file.type === AssetType.CARD_TEMPLATE ? (
-                <img src={file.url} alt={file.name} className="w-full h-full object-contain" />
-            ) : (
-                <FileText size={48} className="text-pidgey-muted opacity-20" />
-            )}
-            {/* Overlay */}
-            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                {onSelect && (
-                    <button 
-                        onClick={() => onSelect(file)}
-                        className="p-2 bg-pidgey-accent text-pidgey-dark rounded-full font-bold text-xs hover:bg-teal-300"
-                    >
-                        Use Art
-                    </button>
+const FileCard: React.FC<{ file: Asset, onAutoTag: (file: Asset) => void, isTagging: boolean, onDelete: (file: Asset) => void, isSafeMode: boolean, onSelect?: (file: Asset) => void }> = ({ file, onAutoTag, isTagging, onDelete, isSafeMode, onSelect }) => {
+    const [imgError, setImgError] = useState(false);
+
+    return (
+        <div className="group bg-pidgey-panel border border-pidgey-border rounded-xl overflow-hidden hover:border-pidgey-muted transition-colors relative">
+            <div className="aspect-square bg-pidgey-dark relative overflow-hidden flex items-center justify-center p-4">
+                {file.type === AssetType.IMAGE || file.type === AssetType.STAMP_ART || file.type === AssetType.ICON || file.type === AssetType.CARD_TEMPLATE ? (
+                    imgError ? (
+                        <div className="flex flex-col items-center text-red-400">
+                             <AlertTriangle size={24} className="mb-2" />
+                             <span className="text-[10px] font-bold uppercase">Broken Link</span>
+                        </div>
+                    ) : (
+                        <img 
+                            src={file.url} 
+                            alt={file.name} 
+                            className="w-full h-full object-contain" 
+                            onError={() => setImgError(true)}
+                        />
+                    )
+                ) : (
+                    <FileText size={48} className="text-pidgey-muted opacity-20" />
                 )}
-                {!onSelect && (
-                    <>
+                {/* Overlay */}
+                <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                    {onSelect && !imgError && (
                         <button 
-                            onClick={() => onAutoTag(file)}
-                            disabled={isTagging}
-                            className="p-2 bg-pidgey-accent/20 hover:bg-pidgey-accent/40 rounded-full text-pidgey-accent backdrop-blur" 
-                            title="AI Auto Tag"
+                            onClick={() => onSelect(file)}
+                            className="p-2 bg-pidgey-accent text-pidgey-dark rounded-full font-bold text-xs hover:bg-teal-300"
                         >
-                            <Sparkles size={18} className={isTagging ? 'animate-spin' : ''} />
+                            Use Art
                         </button>
-                        <a href={file.url} target="_blank" rel="noreferrer" className="p-2 bg-white/10 hover:bg-white/20 rounded-full text-white backdrop-blur"><Download size={18}/></a>
-                        <button 
-                            onClick={() => onDelete(file)}
-                            className={`p-2 rounded-full backdrop-blur transition-colors ${isSafeMode ? 'bg-red-500/20 text-red-300 hover:bg-red-500/40' : 'bg-red-600 text-white hover:bg-red-700'}`}
-                        >
-                            <Trash2 size={18}/>
-                        </button>
-                    </>
-                )}
+                    )}
+                    {!onSelect && (
+                        <>
+                            <button 
+                                onClick={() => onAutoTag(file)}
+                                disabled={isTagging}
+                                className="p-2 bg-pidgey-accent/20 hover:bg-pidgey-accent/40 rounded-full text-pidgey-accent backdrop-blur" 
+                                title="AI Auto Tag"
+                            >
+                                <Sparkles size={18} className={isTagging ? 'animate-spin' : ''} />
+                            </button>
+                            <a href={file.url} target="_blank" rel="noreferrer" className="p-2 bg-white/10 hover:bg-white/20 rounded-full text-white backdrop-blur"><Download size={18}/></a>
+                            <button 
+                                onClick={() => onDelete(file)}
+                                className={`p-2 rounded-full backdrop-blur transition-colors ${isSafeMode ? 'bg-red-500/20 text-red-300 hover:bg-red-500/40' : 'bg-red-600 text-white hover:bg-red-700'}`}
+                            >
+                                <Trash2 size={18}/>
+                            </button>
+                        </>
+                    )}
+                </div>
+            </div>
+            <div className="p-3">
+                <div className="flex justify-between items-start">
+                    <h4 className="font-bold text-sm truncate w-3/4" title={file.name}>{file.name}</h4>
+                    <span className="text-[10px] text-pidgey-muted uppercase font-bold">{file.type.split('_').pop()}</span>
+                </div>
+                <div className="flex justify-between items-center mt-2 text-xs text-pidgey-muted">
+                    <span>{file.size_kb} KB</span>
+                    <span className="bg-pidgey-dark px-1.5 py-0.5 rounded text-[10px]">{new Date(file.created_at).toLocaleDateString()}</span>
+                </div>
+                <div className="mt-2 flex flex-wrap gap-1">
+                    {file.tags.map(tag => (
+                        <span key={tag} className="text-[10px] px-1.5 py-0.5 bg-pidgey-border rounded text-pidgey-text/80">#{tag}</span>
+                    ))}
+                </div>
             </div>
         </div>
-        <div className="p-3">
-            <div className="flex justify-between items-start">
-                <h4 className="font-bold text-sm truncate w-3/4" title={file.name}>{file.name}</h4>
-                <span className="text-[10px] text-pidgey-muted uppercase font-bold">{file.type.split('_').pop()}</span>
-            </div>
-            <div className="flex justify-between items-center mt-2 text-xs text-pidgey-muted">
-                <span>{file.size_kb} KB</span>
-                <span className="bg-pidgey-dark px-1.5 py-0.5 rounded text-[10px]">{new Date(file.created_at).toLocaleDateString()}</span>
-            </div>
-            <div className="mt-2 flex flex-wrap gap-1">
-                {file.tags.map(tag => (
-                    <span key={tag} className="text-[10px] px-1.5 py-0.5 bg-pidgey-border rounded text-pidgey-text/80">#{tag}</span>
-                ))}
-            </div>
-        </div>
-    </div>
-);
+    );
+};
 
 const BUCKETS = [
     { id: 'stamps', label: 'Stamps' },
@@ -118,6 +132,12 @@ export const Files = () => {
              alert(`Sync failed: ${error.message || 'Check console details'}`);
         } else {
              setFiles(data);
+             // Simple feedback based on result count
+             if (data.length > 0) {
+                 alert(`Sync complete! Found ${data.length} files in ${selectedBucket}.`);
+             } else {
+                 alert(`Sync complete but found 0 files. Check if bucket '${selectedBucket}' is empty or files are hidden.`);
+             }
         }
         setIsSyncing(false);
     };

@@ -1,4 +1,3 @@
-
 import { GoogleGenAI } from "@google/genai";
 import { Ticket, Profile } from "../types";
 
@@ -173,5 +172,41 @@ export const generateTagsForAsset = async (assetName: string, assetType: string)
         return ['generated'];
     } catch (e) {
         return ['ai-error'];
+    }
+};
+
+export const generateImageAsset = async (prompt: string, options?: { aspectRatio?: string }): Promise<string | null> => {
+    const apiKey = process.env.API_KEY;
+    if (!apiKey) throw new Error("API Key missing");
+    const ai = new GoogleGenAI({ apiKey });
+
+    // Validate Aspect Ratio (must be one of the supported values)
+    const validRatios = ["1:1", "3:4", "4:3", "9:16", "16:9"];
+    const aspectRatio = options?.aspectRatio && validRatios.includes(options.aspectRatio) 
+        ? options.aspectRatio 
+        : "1:1";
+
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash-image',
+            contents: prompt,
+            config: {
+                imageConfig: {
+                    aspectRatio: aspectRatio,
+                    // imageSize: "1024x1024" // Note: imageSize is for pro models usually, flash auto-handles
+                }
+            }
+        });
+
+        // The image is usually in inlineData in the response parts
+        for (const part of response.candidates?.[0]?.content?.parts || []) {
+            if (part.inlineData) {
+                return part.inlineData.data; // Base64 string
+            }
+        }
+        return null;
+    } catch (e) {
+        console.error("Image Gen Error:", e);
+        throw e;
     }
 };

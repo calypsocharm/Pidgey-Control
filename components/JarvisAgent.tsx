@@ -1,13 +1,11 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Send, Bird, Sparkles, RefreshCw, CheckCircle2, ArrowRight } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { getPidgeyDailyBrief, chatWithPidgey } from '../services/geminiService';
 import { ChatMessage } from '../types';
-import { MOCK_DROPS, MOCK_OPERATIONAL_STATS, MOCK_TICKETS, MOCK_PROFILES } from '../constants';
 import { useJarvis } from '../JarvisContext';
 import { PUBLIC_SCHEMA_DDL } from '../schema';
-import { supabase } from '../services/supabaseClient';
+import { AdminService } from '../services/adminService';
 
 export const JarvisAgent: React.FC = () => {
     const { isOpen, closePidgey, initialMessage, clearMessage, mood, setMood, setDraftPayload, memories, learn } = useJarvis();
@@ -24,23 +22,14 @@ export const JarvisAgent: React.FC = () => {
     const location = useLocation();
     const navigate = useNavigate();
 
-    // Construct Context for AI
+    // Construct Context for AI using REAL Data
     const getSystemContext = async () => {
-        let userCount = MOCK_PROFILES.length;
-        let recentProfiles = [];
-        
-        const { count, data: profiles } = await supabase.from('profiles').select('*', { count: 'exact' }).limit(5);
-        if (count !== null) userCount = count;
-        if (profiles) recentProfiles = profiles;
+        const realData = await AdminService.pidgey.getRealContext();
 
         return {
             schema: PUBLIC_SCHEMA_DDL,
             currentPage: location.pathname,
-            tickets: MOCK_TICKETS.map(t => ({ id: t.id, subject: t.subject, priority: t.priority, status: t.status })),
-            activeDrops: MOCK_DROPS.filter(d => d.status === 'live').map(d => d.title),
-            operational: MOCK_OPERATIONAL_STATS,
-            userCount: userCount,
-            recentProfiles: recentProfiles.map(p => ({ id: p.id, role: p.role, tier: p.tier })),
+            ...realData, // tickets, activeDrops, operational stats (revenue, members)
             memories: memories // Pass learned facts
         };
     };

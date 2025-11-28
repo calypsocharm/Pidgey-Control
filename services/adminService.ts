@@ -1,6 +1,5 @@
-
 import { supabase } from './supabaseClient';
-import { Profile, Drop, Ticket, DropStatus, Broadcast, Promo, Asset, AssetType, DeliveryJourney, DeliveryStatus, BroadcastChannel, Transaction, Role, Tier } from '../types';
+import { Profile, Drop, Ticket, DropStatus, Broadcast, Promo, Asset, AssetType, DeliveryJourney, DeliveryStatus, BroadcastChannel, Transaction, Role, Tier, Stamp } from '../types';
 import { MOCK_BROADCASTS, MOCK_PROMOS, MOCK_ASSETS, MOCK_DELIVERIES, MOCK_FLIGHT_PATHS } from '../constants';
 
 /**
@@ -14,13 +13,28 @@ export interface ListResponse<T> {
 
 // Helper for recursive storage listing
 const listAllFiles = async (bucket: string, path = ''): Promise<any[]> => {
-  const { data, error } = await supabase.storage.from(bucket).list(path);
-  if (error) throw error;
+  // console.log(`[Storage] Listing ${bucket} at path: "${path}"`);
+  const { data, error } = await supabase.storage.from(bucket).list(path, {
+      limit: 1000, // Increased limit to capture more files
+      offset: 0,
+      sortBy: { column: 'name', order: 'asc' },
+  });
+  
+  if (error) {
+      console.error(`[Storage] Error listing ${bucket}:`, error);
+      return [];
+  }
   
   let results: any[] = [];
   for (const item of data || []) {
-    // If id is null, it's typically a folder in Supabase storage
-    if (item.id === null) {
+    // Filter out system placeholders
+    if (item.name === '.emptyFolderPlaceholder') continue;
+
+    // Robust folder detection: id is null, OR metadata is missing
+    const isFolder = item.id === null || !item.metadata;
+
+    if (isFolder) {
+       // Construct path carefully. If path is empty, don't add slash.
        const subPath = path ? `${path}/${item.name}` : item.name;
        const subFiles = await listAllFiles(bucket, subPath);
        results = [...results, ...subFiles];
@@ -28,7 +42,8 @@ const listAllFiles = async (bucket: string, path = ''): Promise<any[]> => {
        // It's a file
        results.push({ 
            ...item, 
-           // Store the full relative path so we can generate the correct URL
+           // Store the full relative path. 
+           // Important: We must preserve the structure exactly as Supabase sees it.
            fullPath: path ? `${path}/${item.name}` : item.name 
        });
     }
@@ -106,13 +121,6 @@ export const AdminService = {
           }
           return chartData;
       },
-
-      // System Seed / Migration
-      seed: async () => {
-          console.log("Starting Migration...");
-          // Logic to seed initial data if needed
-          return { success: true };
-      }
   },
 
   // --- Profiles / Members ---
@@ -243,13 +251,17 @@ export const AdminService = {
 
   // --- Stamps (Real DB) ---
   stamps: {
-      list: async (): Promise<ListResponse<any>> => {
+      list: async (): Promise<ListResponse<Stamp>> => {
           const { data, count, error } = await supabase.from('stamps').select('*', { count: 'exact' });
-          return { data: data || [], count: count || 0, error };
+          return { data: (data as Stamp[]) || [], count: count || 0, error };
       },
       create: async (stamp: any) => {
           const { data, error } = await supabase.from('stamps').insert(stamp).select().single();
           return { data, error };
+      },
+      update: async (id: string, updates: Partial<Stamp>) => {
+          const { data, error } = await supabase.from('stamps').update(updates).eq('id', id).select().single();
+          return { data: data as Stamp, error };
       }
   },
 
@@ -316,18 +328,32 @@ export const AdminService = {
                 return AssetType.IMAGE;
             };
 
-            const realAssets: Asset[] = await Promise.all(rawFiles.map(async (file) => {
-                 // Use the full path (including folders) to get the URL
+            // Use Promise.all to fetch signed URLs in parallel for performance
+            const realAssets: Promise<Asset>[] = rawFiles.map(async (file) => {
+                 // Use the full path (including folders/spaces) exactly as Supabase sees it
                  const filePath = file.fullPath || file.name;
                  
-                 // SECURE ACCESS: Use createSignedUrl instead of getPublicUrl
-                 // This works for PRIVATE buckets if you have the Service Role Key
-                 const { data } = await supabase.storage.from(bucket).createSignedUrl(filePath, 3600); // Valid for 1 hour
+                 let finalUrl = '';
+                 
+                 // Strategy: Force Signed URLs. 
+                 // This is the only way to reliably serve files with "Double Slashes", "Spaces", or "Special Chars"
+                 // without the browser normalizing the URL and breaking it.
+                 try {
+                     const { data, error } = await supabase.storage.from(bucket).createSignedUrl(filePath, 3600); // 1 hour expiry
+                     if (error) throw error;
+                     finalUrl = data.signedUrl;
+                 } catch (err) {
+                     console.warn(`Signed URL failed for ${filePath}, attempting public fallback`, err);
+                     // Fallback: Try a standard public URL but manually encode the parts
+                     const encodedPath = filePath.split('/').map(encodeURIComponent).join('/');
+                     const { data } = supabase.storage.from(bucket).getPublicUrl(encodedPath);
+                     finalUrl = data.publicUrl;
+                 }
                  
                  return {
                     id: file.id || filePath, 
-                    name: filePath, 
-                    url: data?.signedUrl || '', // Fallback empty if sign fails
+                    name: filePath, // Show full path so we know if it's in a folder
+                    url: finalUrl,
                     type: getAssetType(bucket),
                     size_kb: Math.round((file.metadata?.size || 0) / 1024),
                     tags: ['uploaded', bucket],
@@ -335,9 +361,11 @@ export const AdminService = {
                     bucket: bucket,
                     created_at: file.created_at || new Date().toISOString()
                  };
-            }));
+            });
+            
+            const resolvedAssets = await Promise.all(realAssets);
 
-            return { data: realAssets, count: realAssets.length, error: null };
+            return { data: resolvedAssets, count: resolvedAssets.length, error: null };
 
         } catch (e: any) {
             console.error(`Storage fetch failed for bucket ${bucket}:`, e.message);
@@ -346,8 +374,10 @@ export const AdminService = {
     },
 
     upload: async (file: File, bucket: string) => {
+        // Sanitize filename to prevent future issues
         const fileExt = file.name.split('.').pop();
-        const fileName = `${Math.random().toString(36).substring(2, 15)}.${fileExt}`;
+        const cleanName = file.name.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
+        const fileName = `${Date.now()}_${cleanName}.${fileExt}`;
         
         try {
             const { data, error } = await supabase.storage
@@ -356,12 +386,12 @@ export const AdminService = {
 
             if (error) throw error;
 
-            // Generate Signed URL for the new upload too
+            // Get Signed URL immediately
             const { data: urlData } = await supabase.storage.from(bucket).createSignedUrl(fileName, 3600);
             
             const newAsset: Asset = {
                 id: data.path, // path acts as ID
-                name: file.name,
+                name: fileName,
                 url: urlData?.signedUrl || '',
                 type: bucket === 'stamps' ? AssetType.STAMP_ART : AssetType.IMAGE,
                 size_kb: Math.round(file.size / 1024),
@@ -377,6 +407,41 @@ export const AdminService = {
         }
     },
 
+    uploadBase64: async (base64Data: string, bucket: string) => {
+        try {
+            // Convert base64 to Blob
+            const byteCharacters = atob(base64Data);
+            const byteNumbers = new Array(byteCharacters.length);
+            for (let i = 0; i < byteCharacters.length; i++) {
+                byteNumbers[i] = byteCharacters.charCodeAt(i);
+            }
+            const byteArray = new Uint8Array(byteNumbers);
+            const blob = new Blob([byteArray], { type: 'image/png' });
+
+            const fileName = `gen_ai_${Date.now()}.png`;
+            
+            const { data, error } = await supabase.storage
+                .from(bucket)
+                .upload(fileName, blob, { contentType: 'image/png' });
+
+            if (error) throw error;
+
+             // Get Signed URL immediately
+            const { data: urlData } = await supabase.storage.from(bucket).createSignedUrl(fileName, 3600);
+            
+            return { 
+                data: {
+                    url: urlData?.signedUrl || '',
+                    path: data.path
+                },
+                error: null 
+            };
+        } catch (e: any) {
+            console.error("Upload Base64 failed", e);
+            return { data: null, error: e };
+        }
+    },
+
     delete: async (bucket: string, path: string) => {
         try {
              const { data, error } = await supabase.storage.from(bucket).remove([path]);
@@ -387,6 +452,53 @@ export const AdminService = {
             return { error: e };
         }
     }
+  },
+
+  // --- Pidgey AI Brain (Real Data Integration) ---
+  pidgey: {
+      getRealContext: async () => {
+        try {
+            // 1. Real Tickets
+            const { data: tickets } = await supabase
+                .from('tickets')
+                .select('id, subject, priority, status')
+                .eq('status', 'open')
+                .limit(5);
+
+            // 2. Real Drops
+            const { data: activeDrops } = await supabase
+                .from('drops')
+                .select('title, status')
+                .eq('status', 'live');
+
+            // 3. Real Revenue (Last 24h)
+            const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+            const { data: recentTxs } = await supabase
+                .from('transactions')
+                .select('amount')
+                .gte('created_at', yesterday);
+            
+            const revenue24h = recentTxs?.reduce((sum, t) => sum + (Number(t.amount)||0), 0) || 0;
+
+            // 4. Activity
+            const { count: memberCount } = await supabase.from('profiles').select('*', { count: 'exact', head: true });
+
+            return {
+                tickets: tickets || [],
+                activeDrops: activeDrops || [],
+                operational: {
+                    abandoned_carts: { count: 0, potential_revenue: 0, note: "Tracking not yet active" }, // Fallback until table exists
+                    revenue_24h: revenue24h,
+                    total_members: memberCount || 0,
+                    system_health: "Nominal (Real-time logs active)"
+                }
+            };
+
+        } catch (e) {
+            console.error("Pidgey Context Error", e);
+            return { error: "Failed to fetch real context" };
+        }
+      }
   },
 
   // --- Deliveries (Hybrid/Mock) ---

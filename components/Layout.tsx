@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { LayoutDashboard, Users, Egg, StickyNote, Mail, FolderOpen, Settings, LogOut, Search, Bell, Bird, Activity, Plane, Palette, Shield, ShieldAlert, Zap } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
