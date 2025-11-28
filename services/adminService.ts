@@ -483,14 +483,26 @@ export const AdminService = {
             // 4. Activity
             const { count: memberCount } = await supabase.from('profiles').select('*', { count: 'exact', head: true });
 
+            // 5. Broadcasts & Promos (New for Smarter Pidgey)
+            const { data: recentBroadcasts } = await supabase
+                .from('broadcasts')
+                .select('name, status, stats')
+                .limit(3);
+                
+            const { data: activePromos } = await supabase
+                .from('promos')
+                .select('code, type, usage_count')
+                .eq('status', 'active');
+
             return {
                 tickets: tickets || [],
                 activeDrops: activeDrops || [],
+                broadcasts: recentBroadcasts || [],
+                promos: activePromos || [],
                 operational: {
-                    abandoned_carts: { count: 0, potential_revenue: 0, note: "Tracking not yet active" }, // Fallback until table exists
                     revenue_24h: revenue24h,
                     total_members: memberCount || 0,
-                    system_health: "Nominal (Real-time logs active)"
+                    system_health: "Nominal"
                 }
             };
 

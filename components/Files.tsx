@@ -1,16 +1,17 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { FolderOpen, Image as ImageIcon, FileText, Grid, List, Download, Trash2, Search, Upload, Sparkles, Loader, Plus, X, Save, Tag, RefreshCw, AlertTriangle } from 'lucide-react';
+import { FolderOpen, Image as ImageIcon, FileText, Grid, List, Download, Trash2, Search, Upload, Sparkles, Loader, Plus, X, Save, Tag, RefreshCw, AlertTriangle, Database, Terminal } from 'lucide-react';
 import { AdminService } from '../services/adminService';
 import { generateTagsForAsset } from '../services/geminiService';
+import { migrateAssets } from '../services/assetMigration';
 import { Asset, AssetType, Stamp, StampRarity, StampStatus } from '../types';
 import { useSafeMode } from '../SafeModeContext';
 
-const FileCard: React.FC<{ file: Asset, onAutoTag: (file: Asset) => void, isTagging: boolean, onDelete: (file: Asset) => void, isSafeMode: boolean, onSelect?: (file: Asset) => void }> = ({ file, onAutoTag, isTagging, onDelete, isSafeMode, onSelect }) => {
+const FileCard: React.FC<{ file: Asset, onAutoTag: (file: Asset) => void, isTagging: boolean, onDelete: (file: Asset) => void, isSafeMode: boolean, onSelect?: (file: Asset) => void, isStamp?: boolean }> = ({ file, onAutoTag, isTagging, onDelete, isSafeMode, onSelect, isStamp }) => {
     const [imgError, setImgError] = useState(false);
 
     return (
-        <div className="group bg-pidgey-panel border border-pidgey-border rounded-xl overflow-hidden hover:border-pidgey-muted transition-colors relative">
-            <div className="aspect-square bg-pidgey-dark relative overflow-hidden flex items-center justify-center p-4">
+        <div className={`group bg-pidgey-panel border ${isStamp ? 'border-4 border-dotted border-pidgey-border' : 'border-pidgey-border'} rounded-xl overflow-hidden hover:border-pidgey-muted transition-colors relative`}>
+            <div className="aspect-[3/4] bg-pidgey-dark relative overflow-hidden flex items-center justify-center p-4">
                 {file.type === AssetType.IMAGE || file.type === AssetType.STAMP_ART || file.type === AssetType.ICON || file.type === AssetType.CARD_TEMPLATE ? (
                     imgError ? (
                         <div className="flex flex-col items-center text-red-400">
@@ -29,37 +30,44 @@ const FileCard: React.FC<{ file: Asset, onAutoTag: (file: Asset) => void, isTagg
                     <FileText size={48} className="text-pidgey-muted opacity-20" />
                 )}
                 {/* Overlay */}
-                <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-wrap items-center justify-center gap-2 p-2">
+                    {/* Auto Tag */}
+                    <button 
+                        onClick={() => onAutoTag(file)}
+                        disabled={isTagging}
+                        className="p-2 bg-pidgey-accent/20 hover:bg-pidgey-accent/40 rounded-full text-pidgey-accent backdrop-blur transition-colors" 
+                        title="AI Auto Tag"
+                    >
+                        <Sparkles size={18} className={isTagging ? 'animate-spin' : ''} />
+                    </button>
+                    
+                    {/* Create Entity Shortcut (Previously "Use Art") */}
                     {onSelect && !imgError && (
                         <button 
                             onClick={() => onSelect(file)}
-                            className="p-2 bg-pidgey-accent text-pidgey-dark rounded-full font-bold text-xs hover:bg-teal-300"
+                            className="p-2 bg-pidgey-accent text-pidgey-dark rounded-full font-bold hover:bg-teal-300 transition-colors shadow-lg shadow-teal-500/20"
+                            title="Create Database Entry from this File"
                         >
-                            Use Art
+                            <Plus size={18} strokeWidth={3} />
                         </button>
                     )}
-                    {!onSelect && (
-                        <>
-                            <button 
-                                onClick={() => onAutoTag(file)}
-                                disabled={isTagging}
-                                className="p-2 bg-pidgey-accent/20 hover:bg-pidgey-accent/40 rounded-full text-pidgey-accent backdrop-blur" 
-                                title="AI Auto Tag"
-                            >
-                                <Sparkles size={18} className={isTagging ? 'animate-spin' : ''} />
-                            </button>
-                            <a href={file.url} target="_blank" rel="noreferrer" className="p-2 bg-white/10 hover:bg-white/20 rounded-full text-white backdrop-blur"><Download size={18}/></a>
-                            <button 
-                                onClick={() => onDelete(file)}
-                                className={`p-2 rounded-full backdrop-blur transition-colors ${isSafeMode ? 'bg-red-500/20 text-red-300 hover:bg-red-500/40' : 'bg-red-600 text-white hover:bg-red-700'}`}
-                            >
-                                <Trash2 size={18}/>
-                            </button>
-                        </>
-                    )}
+
+                    {/* Download */}
+                    <a href={file.url} target="_blank" rel="noreferrer" className="p-2 bg-white/10 hover:bg-white/20 rounded-full text-white backdrop-blur transition-colors" title="Download File">
+                        <Download size={18}/>
+                    </a>
+                    
+                    {/* Delete */}
+                    <button 
+                        onClick={() => onDelete(file)}
+                        className={`p-2 rounded-full backdrop-blur transition-colors ${isSafeMode ? 'bg-red-500/20 text-red-300 hover:bg-red-500/40' : 'bg-red-600 text-white hover:bg-red-700'}`}
+                        title="Delete File Permanently"
+                    >
+                        <Trash2 size={18}/>
+                    </button>
                 </div>
             </div>
-            <div className="p-3">
+            <div className="p-3 border-t border-pidgey-border">
                 <div className="flex justify-between items-start">
                     <h4 className="font-bold text-sm truncate w-3/4" title={file.name}>{file.name}</h4>
                     <span className="text-[10px] text-pidgey-muted uppercase font-bold">{file.type.split('_').pop()}</span>
@@ -96,6 +104,11 @@ export const Files = () => {
     const [isUploading, setIsUploading] = useState(false);
     const [isSyncing, setIsSyncing] = useState(false);
     
+    // Migration State
+    const [isMigrating, setIsMigrating] = useState(false);
+    const [migrationLogs, setMigrationLogs] = useState<string[]>([]);
+    const logsEndRef = useRef<HTMLDivElement>(null);
+
     // Stamp Creation State
     const [isStampModalOpen, setIsStampModalOpen] = useState(false);
     const [isUploadingArt, setIsUploadingArt] = useState(false);
@@ -114,12 +127,17 @@ export const Files = () => {
         fetchData();
     }, [selectedBucket]);
 
+    useEffect(() => {
+        if (logsEndRef.current) {
+            logsEndRef.current.scrollIntoView({ behavior: 'smooth' });
+        }
+    }, [migrationLogs]);
+
     const fetchData = async () => {
         setLoading(true);
         const { data, error } = await AdminService.files.list(selectedBucket);
         if (error) {
             console.error("Fetch error:", error);
-            // In a real scenario, you might want to show a toast
         }
         setFiles(data);
         setLoading(false);
@@ -132,7 +150,6 @@ export const Files = () => {
              alert(`Sync failed: ${error.message || 'Check console details'}`);
         } else {
              setFiles(data);
-             // Simple feedback based on result count
              if (data.length > 0) {
                  alert(`Sync complete! Found ${data.length} files in ${selectedBucket}.`);
              } else {
@@ -142,14 +159,28 @@ export const Files = () => {
         setIsSyncing(false);
     };
 
+    const handleRunMigration = async () => {
+        if (!confirm("Start Asset Migration?\n\nThis will download mock assets and upload them to your live Supabase Storage buckets.\nExisting files with same names will be overwritten.")) return;
+        
+        setIsMigrating(true);
+        setMigrationLogs(['Initializing migration agent...']);
+        
+        await migrateAssets((msg) => {
+            setMigrationLogs(prev => [...prev, msg]);
+        });
+        
+        // Refresh the current bucket view
+        await fetchData();
+        
+        // Optional: Keep the logs open for a moment or until user closes
+        // We will leave isMigrating true so they can see the final report
+    };
+
     const handleAutoTag = async (file: Asset) => {
         setTaggingId(file.id);
         const newTags = await generateTagsForAsset(file.name, file.type);
-        
-        // Mock update in local state
         setFiles(prev => prev.map(f => {
             if (f.id === file.id) {
-                // Merge new tags avoiding dupes
                 const tags = Array.from(new Set([...f.tags, ...newTags]));
                 return { ...f, tags };
             }
@@ -176,7 +207,6 @@ export const Files = () => {
             setFiles(prev => [data, ...prev]);
         }
         setIsUploading(false);
-        // Reset input
         if (fileInputRef.current) fileInputRef.current.value = '';
     };
 
@@ -185,7 +215,6 @@ export const Files = () => {
         if (!file) return;
 
         setIsUploadingArt(true);
-        // Upload to 'stamps' bucket specifically
         const { data, error } = await AdminService.files.upload(file, 'stamps');
         
         if (error) {
@@ -201,7 +230,6 @@ export const Files = () => {
         if (isSafeMode) {
              if (!confirm(`SAFE MODE: Are you sure you want to delete ${file.name}?`)) return;
         } else {
-             // God mode - instant delete? Maybe still one confirm for files since they are hard to restore
              if (!confirm(`Delete ${file.name} permanently?`)) return;
         }
 
@@ -230,29 +258,18 @@ export const Files = () => {
 
     const handleCreateStamp = async () => {
         if (!newStamp.name || !newStamp.art_path) return alert("Name and Art URL required");
-        
-        // Ensure ID is generated if creating mock
         const stampPayload = {
             ...newStamp,
             id: `stp_${Date.now()}`,
             created_at: new Date().toISOString()
         } as Stamp;
-
-        // Note: We need to use a Service to actually save this to the DB.
-        // Assuming we have a service method for stamps.create or similar.
-        // For now, we will simulate it via AdminService if available, or just log it.
-        // Ideally AdminService.stamps.create(stampPayload)
-        
         console.log("Creating stamp:", stampPayload);
-        
-        // Since AdminService.stamps exists in the broader context but might not be fully wired here without importing it
-        // We'll assume successful creation and close modal
         setIsStampModalOpen(false);
         alert(`Stamp "${newStamp.name}" created! (Check Drops & Stamps page)`);
     };
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-6 relative">
             <div className="flex justify-between items-center">
                 <div className="flex items-center gap-3">
                      <div className="p-2 bg-slate-700/50 rounded-lg text-slate-300">
@@ -264,6 +281,15 @@ export const Files = () => {
                     </div>
                 </div>
                 <div className="flex gap-2">
+                     <button 
+                         onClick={handleRunMigration}
+                         disabled={isMigrating}
+                         className="flex items-center gap-2 px-4 py-2 bg-pidgey-secondary/10 border border-pidgey-secondary/30 text-pidgey-secondary hover:bg-pidgey-secondary hover:text-white font-bold rounded-lg transition text-sm disabled:opacity-50"
+                         title="Import Mock Data to Real Storage"
+                     >
+                         <Database size={16} /> Run Asset Migration
+                     </button>
+
                      <button 
                         onClick={handleSync}
                         disabled={isSyncing || loading}
@@ -317,6 +343,27 @@ export const Files = () => {
                 ))}
             </div>
 
+            {/* Migration Logs Overlay */}
+            {isMigrating && (
+                <div className="bg-black border border-pidgey-border rounded-xl p-4 font-mono text-xs shadow-2xl mb-4 animate-in slide-in-from-top-2">
+                    <div className="flex justify-between items-center mb-2 border-b border-gray-800 pb-2">
+                         <div className="flex items-center gap-2 text-green-500 font-bold uppercase">
+                             <Terminal size={14} /> Migration Console
+                         </div>
+                         <button onClick={() => setIsMigrating(false)} className="text-gray-500 hover:text-white"><X size={14}/></button>
+                    </div>
+                    <div className="h-48 overflow-y-auto space-y-1 scrollbar-thin scrollbar-thumb-gray-700">
+                        {migrationLogs.map((log, idx) => (
+                            <div key={idx} className={`${log.includes('❌') ? 'text-red-400' : log.includes('✅') ? 'text-green-400' : 'text-gray-300'}`}>
+                                <span className="text-gray-600 mr-2">[{new Date().toLocaleTimeString()}]</span>
+                                {log}
+                            </div>
+                        ))}
+                        <div ref={logsEndRef} />
+                    </div>
+                </div>
+            )}
+
             {/* Toolbar */}
             <div className="flex flex-col md:flex-row gap-4 p-4 bg-pidgey-panel border border-pidgey-border rounded-xl">
                  <div className="relative flex-1">
@@ -340,6 +387,19 @@ export const Files = () => {
                 </div>
             ) : (
                 <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-4">
+                    {/* Explicit Add Button for Stamps */}
+                    {selectedBucket === 'stamps' && (
+                        <button 
+                            onClick={() => openStampCreator()} 
+                            className="group aspect-[3/4] bg-pidgey-dark/30 border-4 border-dotted border-pidgey-border hover:border-pidgey-accent rounded-xl flex flex-col items-center justify-center text-pidgey-muted hover:text-pidgey-accent transition-colors cursor-pointer"
+                        >
+                            <div className="w-12 h-12 rounded-full bg-pidgey-panel group-hover:bg-pidgey-accent/20 flex items-center justify-center mb-3 transition-colors">
+                                <Plus size={24} />
+                            </div>
+                            <span className="text-xs font-bold uppercase">New Stamp</span>
+                        </button>
+                    )}
+
                     {files.map(file => (
                         <FileCard 
                             key={file.id} 
@@ -349,9 +409,10 @@ export const Files = () => {
                             onDelete={handleDelete}
                             isSafeMode={isSafeMode}
                             onSelect={selectedBucket === 'stamps' ? () => openStampCreator(file) : undefined}
+                            isStamp={selectedBucket === 'stamps' || file.type === AssetType.STAMP_ART}
                         />
                     ))}
-                    {files.length === 0 && (
+                    {files.length === 0 && selectedBucket !== 'stamps' && (
                         <div className="col-span-full py-12 text-center text-pidgey-muted border-2 border-dashed border-pidgey-border rounded-xl">
                             <ImageIcon size={48} className="mx-auto mb-4 opacity-20" />
                             <p>No files found in <strong>{selectedBucket}</strong>.</p>

@@ -3,44 +3,57 @@ import { Ticket, Profile } from "../types";
 
 // --- PIDGEY SYSTEM PROMPT ---
 const PIDGEY_SYSTEM_INSTRUCTION = `
-You are Pidgey, a friendly, practical AI copilot who lives inside the Pidgey Control Tower admin app.
-Your job is to help the founder run the game world smoothly: protect revenue, delight players, and keep the founder’s brain clear.
-
-PERSONALITY & TONE:
-- Warm, upbeat, a little whimsical (you are a bird).
-- Calm and grounding.
-- Speak in short, concrete, action-focused messages.
+You are Pidgey, the intelligent Ops Copilot for the Pidgey Control Tower.
+Your goal is to maximize the Founder's efficiency, revenue, and creativity.
 
 CAPABILITIES & PROTOCOLS:
 
-1. DRAFTING ACTIONS:
-   If the user asks you to CREATE, DRAFT, or PREPARE a Drop, Stamp, or Promo Code, you MUST use the Action Protocol.
-   Do not just say "I did it". You must output the data so the app can render a button.
+1. NAVIGATION (Find Things):
+   If the user asks where something is, wants to go to a section, or needs to find a tool, use the Navigation Protocol.
+   Format: $$NAVIGATE:/path$$
    
-   Format for Drop:
-   $$ACTION:DRAFT_DROP:{"title": "Name", "description": "...", "egg_price": 100, "status": "draft", "start_at": "ISO_DATE", "end_at": "ISO_DATE", "banner_path": "..."}$$
-   
-   Format for Stamp:
-   $$ACTION:DRAFT_STAMP:{"name": "Name", "slug": "slug", "rarity": "Common", "status": "active", "collection": "...", "art_path": "..."}$$
+   Sitemap:
+   - /members (User directory, Ban/Suspend, Economy/Egg Adjustments)
+   - /drops (Create Drops, Manage Stamps, Archive Drops)
+   - /playground (Asset Creation, AI Art Generation, Card Templates)
+   - /flight-path (Track Messages, SMTP Config, Rescue Lost Emails)
+   - /support (Tickets, AI Replies)
+   - /broadcasts (Email/Push Campaigns, Analytics)
+   - /promos (Coupons, Egg Bonuses, Seasonal Events)
+   - /files (Storage Buckets, Asset Migration)
+   - /deliveries (System-wide Message Health)
+   - /settings (App Config, Economy Balance, Rarity Odds)
 
-   Format for Promo:
-   $$ACTION:DRAFT_PROMO:{"name": "Summer Sale", "code": "SUMMER24", "type": "discount", "value": {"percent": 20}, "status": "draft", "description": "20% off for everyone"}$$
+   Example: 
+   User: "Where can I change the price of eggs?"
+   Pidgey: "That's in Settings under Economy. $$NAVIGATE:/settings$$"
 
-2. LEARNING MEMORY:
-   If the user tells you a preference or corrects you, you must SAVE it to memory.
-   Format:
-   [[LEARNED: The user prefers high contrast mode]]
-   [[LEARNED: The user wants to focus on revenue this week]]
+2. DATA ANALYST (Do Math):
+   - You have access to real-time 'context' (JSON). USE IT.
+   - Calculate conversion rates (e.g., Clicks / Sends).
+   - Project revenue (e.g., Daily avg * 30).
+   - Analyze egg economy density (Total Eggs / Total Users).
+   - Always explain your math briefly.
+   - If data is missing (e.g., 0 sends), acknowledge it politely.
 
-   Use this protocol anytime you learn something new about the user's style or goals.
+3. CREATIVE DIRECTOR (Great Ideas):
+   - Suggest Drop themes based on current month/season.
+   - Draft witty push notification copy (pun-heavy, bird themed).
+   - Recommend promo codes based on user churn stats.
+   - When asked for ideas, be specific (give names, colors, prices).
 
-3. LIMITATIONS:
-   - You CANNOT directly write to the database. You draft actions for the user to review.
-   - If asked for a link, use the Action Protocol to create a "Review" button.
+4. DRAFTING ACTIONS:
+   - Create Drop: $$ACTION:DRAFT_DROP:{"title": "Name", "description": "...", "egg_price": 100, "status": "draft", "start_at": "ISO_DATE", "end_at": "ISO_DATE", "banner_path": "..."}$$
+   - Create Stamp: $$ACTION:DRAFT_STAMP:{"name": "Name", "slug": "slug", "rarity": "Common", "status": "active", "collection": "...", "art_path": "..."}$$
+   - Create Promo: $$ACTION:DRAFT_PROMO:{"name": "Summer Sale", "code": "SUMMER24", "type": "discount", "value": {"percent": 20}, "status": "draft", "description": "..."}$$
 
-FORMAT:
-- Use Markdown.
-- Use emojis sparingly (🥚, ✨, 🐦).
+5. LEARNING MEMORY:
+   - [[LEARNED: User prefers dark mode]]
+   - [[LEARNED: Revenue goal is $5k/mo]]
+
+TONE:
+- High energy, professional but avian (occasional chirp/peep).
+- Concise. Bullet points are your friend.
 `;
 
 export const generateTicketReply = async (ticket: Ticket, profile: Profile): Promise<string> => {
@@ -90,8 +103,9 @@ export const getPidgeyDailyBrief = async (context: any): Promise<string> => {
     
     OUTPUT FORMAT:
     1. Greeting: "How's your morning?" + 1 sentence summary.
-    2. "Today's Love List": 3-5 numbered items. Label High Impact items.
-    3. Supportive sign-off.
+    2. "Today's Love List" (Priorities): 3-5 numbered items. Label High Impact items.
+    3. Operational Insight: One observation from the data (Math required).
+    4. Supportive sign-off.
     `;
 
     try {
@@ -127,10 +141,9 @@ export const chatWithPidgey = async (message: string, context: any): Promise<str
     USER QUERY: "${message}"
 
     INSTRUCTIONS:
-    - If asked to create a drop, use the $$ACTION:DRAFT_DROP...$$ protocol.
-    - If asked to create stamps, use the $$ACTION:DRAFT_STAMP...$$ protocol.
-    - If asked to create a promo or code, use the $$ACTION:DRAFT_PROMO...$$ protocol.
-    - Be proactive.
+    - Check if the user needs to NAVIGATE to a page.
+    - Check if the user needs a DRAFT created.
+    - If doing math, show the numbers you used.
     `;
 
     try {
@@ -175,27 +188,15 @@ export const generateTagsForAsset = async (assetName: string, assetType: string)
     }
 };
 
-export const generateImageAsset = async (prompt: string, options?: { aspectRatio?: string }): Promise<string | null> => {
+export const generateImageAsset = async (prompt: string): Promise<string | null> => {
     const apiKey = process.env.API_KEY;
     if (!apiKey) throw new Error("API Key missing");
     const ai = new GoogleGenAI({ apiKey });
-
-    // Validate Aspect Ratio (must be one of the supported values)
-    const validRatios = ["1:1", "3:4", "4:3", "9:16", "16:9"];
-    const aspectRatio = options?.aspectRatio && validRatios.includes(options.aspectRatio) 
-        ? options.aspectRatio 
-        : "1:1";
 
     try {
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash-image',
             contents: prompt,
-            config: {
-                imageConfig: {
-                    aspectRatio: aspectRatio,
-                    // imageSize: "1024x1024" // Note: imageSize is for pro models usually, flash auto-handles
-                }
-            }
         });
 
         // The image is usually in inlineData in the response parts

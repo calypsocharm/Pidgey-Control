@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Send, Bird, Sparkles, RefreshCw, CheckCircle2, ArrowRight } from 'lucide-react';
+import { X, Send, Bird, Sparkles, RefreshCw, CheckCircle2, ArrowRight, ExternalLink } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { getPidgeyDailyBrief, chatWithPidgey } from '../services/geminiService';
 import { ChatMessage } from '../types';
@@ -29,7 +29,7 @@ export const JarvisAgent: React.FC = () => {
         return {
             schema: PUBLIC_SCHEMA_DDL,
             currentPage: location.pathname,
-            ...realData, // tickets, activeDrops, operational stats (revenue, members)
+            ...realData, // tickets, activeDrops, operational stats, promos, broadcasts
             memories: memories // Pass learned facts
         };
     };
@@ -97,7 +97,7 @@ export const JarvisAgent: React.FC = () => {
         }
         responseText = responseText.replace(learnRegex, '').trim();
 
-        // 2. Parse Actions
+        // 2. Parse Actions (Drafts)
         const actionRegex = /\$\$ACTION:(.*?):(.*?)\$\$/;
         const actionMatch = responseText.match(actionRegex);
         
@@ -111,6 +111,22 @@ export const JarvisAgent: React.FC = () => {
             } catch (e) {
                 console.error("Failed to parse action", e);
             }
+        }
+
+        // 3. Parse Navigation
+        const navRegex = /\$\$NAVIGATE:(.*?)\$\$/;
+        const navMatch = responseText.match(navRegex);
+        if (navMatch) {
+            const path = navMatch[1];
+            navigate(path);
+            responseText = responseText.replace(navRegex, '').trim();
+            // Optional: Add a "Navigated" confirmation to the message or separate toast
+             setMessages(prev => [...prev, {
+                id: Date.now().toString() + '_nav',
+                role: 'assistant',
+                content: `*Navigating to ${path}...* 🚁`,
+                timestamp: new Date()
+             }]);
         }
 
         const botMsg: ChatMessage = {
@@ -163,7 +179,7 @@ export const JarvisAgent: React.FC = () => {
                     </div>
                     <div>
                         <h3 className="font-bold text-white text-lg leading-none">Pidgey</h3>
-                        <span className="text-[11px] text-pidgey-muted font-medium">Ops Copilot</span>
+                        <span className="text-[11px] text-pidgey-muted font-medium">Ops Copilot v2.0</span>
                     </div>
                 </div>
                 <button onClick={closePidgey} className="p-2 hover:bg-white/5 rounded-full text-pidgey-muted hover:text-white transition-colors">
@@ -243,7 +259,7 @@ export const JarvisAgent: React.FC = () => {
                                                 : 'bg-pidgey-panel border border-pidgey-border text-pidgey-text rounded-tl-sm'
                                         }`}>
                                             <div dangerouslySetInnerHTML={{ 
-                                                __html: msg.content.replace(/\n/g, '<br/>') 
+                                                __html: msg.content.replace(/\n/g, '<br/>').replace(/\*\*(.*?)\*\*/g, '<b>$1</b>')
                                             }} />
                                         </div>
                                     </div>
@@ -293,7 +309,7 @@ export const JarvisAgent: React.FC = () => {
                                     value={input}
                                     onChange={(e) => setInput(e.target.value)}
                                     onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
-                                    placeholder="Ask Pidgey..."
+                                    placeholder="Try: 'Draft a promo' or 'Where are the logs?'"
                                     className="w-full bg-pidgey-dark border border-pidgey-border rounded-xl pl-4 pr-12 py-3 text-sm focus:outline-none focus:border-pidgey-accent focus:ring-1 focus:ring-pidgey-accent text-white placeholder-pidgey-muted transition-all"
                                 />
                                 <button 

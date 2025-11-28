@@ -1,12 +1,10 @@
-
 import React, { useState, useEffect, useRef } from 'react';
-import { Image as ImageIcon, Sparkles, Upload, Save, Loader, AlertTriangle, RefreshCw, Palette, LayoutTemplate, Plus, Type, Move, AlignLeft, AlignCenter, AlignRight, ArrowUp, ArrowDown, Square, RectangleHorizontal, RectangleVertical, Repeat, MailOpen } from 'lucide-react';
+import { Image as ImageIcon, Sparkles, Upload, Save, Loader, AlertTriangle, RefreshCw, Palette, LayoutTemplate, Plus, Type, Move, AlignLeft, AlignCenter, AlignRight, ArrowUp, ArrowDown } from 'lucide-react';
 import { AdminService } from '../services/adminService';
 import { generateImageAsset } from '../services/geminiService';
-import { Stamp, Asset } from '../types';
+import { Stamp, Asset, StampRarity, StampStatus } from '../types';
 
 type StudioMode = 'stamps' | 'templates';
-type AspectRatio = '1:1' | '9:16' | '16:9' | '3:4' | '4:3';
 
 interface TextConfig {
     text: string;
@@ -34,16 +32,14 @@ export const Playground = () => {
     const [activeTab, setActiveTab] = useState<'upload' | 'ai' | 'design'>('upload');
     const [previewUrl, setPreviewUrl] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
-    const [aspectRatio, setAspectRatio] = useState<AspectRatio>('1:1');
-    const [isFlipped, setIsFlipped] = useState(false); // 3D Flip State
     
     // Template Specific State
     const [templateName, setTemplateName] = useState('');
-    // const [showTextOverlay, setShowTextOverlay] = useState(true); // Deprecated in favor of Back Side
+    const [showTextOverlay, setShowTextOverlay] = useState(true);
     const [textConfig, setTextConfig] = useState<TextConfig>({
-        text: "Dear Friend,\n\nHoping this card brings a smile to your face!\n\nBest,\nPidgey",
+        text: "Happy Birthday!\nWishing you a wonderful day.",
         font: 'font-handwriting',
-        size: 24,
+        size: 32,
         color: '#1e293b',
         align: 'text-center',
         vertical: 'justify-center'
@@ -64,7 +60,6 @@ export const Playground = () => {
             const { data } = await AdminService.stamps.list();
             setStamps(data);
             setSelectedTemplate(null);
-            setIsFlipped(false);
             if (activeTab === 'design') setActiveTab('upload');
         } else {
             const { data } = await AdminService.files.list('templates');
@@ -81,9 +76,24 @@ export const Playground = () => {
         setSelectedTemplate(null);
         setPreviewUrl(stamp.art_path || '');
         setPrompt(`A ${stamp.rarity.toLowerCase()} stamp of a ${stamp.name}, isolated on white background, vector style`);
-        setAspectRatio('1:1'); // Stamps default to square
-        setIsFlipped(false);
         if (activeTab === 'design') setActiveTab('upload');
+    };
+
+    const handleNewStamp = () => {
+        setSelectedStamp({
+            id: 'new',
+            name: 'New Stamp',
+            rarity: StampRarity.COMMON,
+            status: StampStatus.ACTIVE,
+            price_eggs: 0,
+            is_drop_only: false,
+            art_path: '',
+            collection: 'Playground'
+        });
+        setSelectedTemplate(null);
+        setPreviewUrl('');
+        setPrompt("A vector stamp illustration of...");
+        setActiveTab('ai');
     };
 
     const handleSelectTemplate = (template: Asset) => {
@@ -92,8 +102,6 @@ export const Playground = () => {
         setPreviewUrl(template.url || '');
         setTemplateName(template.name.split('.')[0]);
         setPrompt("A greeting card background, soft pastel colors, floral border, whitespace in center");
-        setAspectRatio('3:4'); // Templates default to portrait
-        setIsFlipped(false); // Start on front
         setActiveTab('design'); // Auto-switch to design mode for templates
     };
 
@@ -111,8 +119,6 @@ export const Playground = () => {
         setPreviewUrl('');
         setTemplateName(`template_${Date.now()}`);
         setPrompt("A greeting card background...");
-        setAspectRatio('3:4');
-        setIsFlipped(false);
         setActiveTab('ai');
     };
 
@@ -139,8 +145,7 @@ export const Playground = () => {
         if (!prompt) return;
         setIsProcessing(true);
         try {
-            // Pass aspect ratio to generator
-            const base64 = await generateImageAsset(prompt, { aspectRatio });
+            const base64 = await generateImageAsset(prompt);
             if (base64) {
                 // Upload base64 to storage immediately
                 const bucket = mode === 'stamps' ? 'stamps' : 'templates';
@@ -162,51 +167,36 @@ export const Playground = () => {
     };
 
     const handleSave = async () => {
-        if (!previewUrl && mode !== 'templates') return; // Templates can be blank if just text? No, usually need bg.
+        if (!previewUrl) return;
         setIsProcessing(true);
 
         if (mode === 'stamps') {
             if (!selectedStamp || !selectedStamp.id) return alert("No stamp selected");
             
-            const { error } = await AdminService.stamps.update(selectedStamp.id, {
-                art_path: previewUrl
-            });
-
-            if (error) {
-                alert("Failed to save stamp: " + error.message);
+            // If it's a new stamp, we would normally call create(), but for now we just log
+            // or if it has an ID, update it
+            if (selectedStamp.id !== 'new') {
+                 const { error } = await AdminService.stamps.update(selectedStamp.id, {
+                    art_path: previewUrl
+                });
+                 if (error) {
+                    alert("Failed to save stamp: " + error.message);
+                } else {
+                    setStamps(prev => prev.map(s => s.id === selectedStamp.id ? { ...s, art_path: previewUrl } : s));
+                    alert("Stamp updated successfully!");
+                }
             } else {
-                setStamps(prev => prev.map(s => s.id === selectedStamp.id ? { ...s, art_path: previewUrl } : s));
-                alert("Stamp updated successfully!");
+                alert("New stamp draft. Go to Drops & Stamps to finalize creation.");
             }
         } else {
             // Saving Template 
+            // In a real app, we would also save the textConfig to the database here
             console.log("Saving template config:", textConfig);
             await loadData();
             alert("Template saved to library!");
         }
         setIsProcessing(false);
     };
-
-    const handleTestOpen = () => {
-        // Simulate the "Cut & Flip" animation sequence
-        setIsFlipped(false); // Reset to front
-        setTimeout(() => setIsFlipped(true), 800); // Flip after "cut"
-    };
-
-    // Calculate dimensions based on aspect ratio
-    const getPreviewDimensions = () => {
-        const baseHeight = 360;
-        switch(aspectRatio) {
-            case '1:1': return { width: baseHeight, height: baseHeight, class: 'aspect-square' };
-            case '16:9': return { width: baseHeight * (16/9), height: baseHeight, class: 'aspect-video' };
-            case '9:16': return { width: baseHeight * (9/16), height: baseHeight, class: 'aspect-[9/16]' };
-            case '4:3': return { width: baseHeight * (4/3), height: baseHeight, class: 'aspect-[4/3]' };
-            case '3:4': return { width: baseHeight * (3/4), height: baseHeight, class: 'aspect-[3/4]' };
-            default: return { width: baseHeight, height: baseHeight, class: 'aspect-square' };
-        }
-    };
-
-    const dims = getPreviewDimensions();
 
     return (
         <div className="h-[calc(100vh-8rem)] flex gap-6">
@@ -240,18 +230,11 @@ export const Playground = () => {
                 <div className="p-3 border-b border-pidgey-border bg-pidgey-dark flex justify-between items-center">
                     <span className="text-xs font-bold text-pidgey-muted uppercase">{mode} Library</span>
                     <div className="flex gap-2">
-                        {mode === 'templates' && (
-                            <button onClick={handleNewTemplate} className="p-1.5 bg-pidgey-accent text-pidgey-dark rounded hover:bg-teal-300 transition" title="New Template">
-                                <Plus size={14} />
-                            </button>
-                        )}
-                        <button 
-                            onClick={loadData} 
-                            disabled={loading}
-                            className="p-1.5 hover:bg-white/10 rounded text-pidgey-muted hover:text-white transition flex items-center gap-1 bg-pidgey-panel border border-pidgey-border"
-                            title="Sync / Refresh Library"
-                        >
-                            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+                         <button onClick={mode === 'stamps' ? handleNewStamp : handleNewTemplate} className="flex items-center gap-2 px-3 py-1.5 bg-pidgey-accent text-pidgey-dark rounded hover:bg-teal-300 transition text-xs font-bold" title={mode === 'stamps' ? "New Stamp" : "New Template"}>
+                            <Plus size={14} /> New
+                        </button>
+                        <button onClick={loadData} className="p-1.5 hover:bg-white/10 rounded text-pidgey-muted hover:text-white transition">
+                            <RefreshCw size={14} />
                         </button>
                     </div>
                 </div>
@@ -262,7 +245,7 @@ export const Playground = () => {
                         <div className="text-center py-8 text-pidgey-muted"><Loader className="animate-spin mx-auto mb-2"/> Loading...</div>
                     ) : (
                         mode === 'stamps' ? (
-                            stamps.map(stamp => (
+                            [...(selectedStamp?.id === 'new' ? [selectedStamp] : []), ...stamps].map(stamp => (
                                 <div 
                                     key={stamp.id} 
                                     onClick={() => handleSelectStamp(stamp)}
@@ -272,11 +255,11 @@ export const Playground = () => {
                                         : 'bg-pidgey-dark/50 border-pidgey-border hover:border-pidgey-muted'
                                     }`}
                                 >
-                                    <div className={`w-10 h-10 rounded bg-black/40 flex items-center justify-center overflow-hidden border ${
+                                    <div className={`w-12 h-16 rounded bg-black/40 flex items-center justify-center overflow-hidden border ${
                                         !stamp.art_path ? 'border-dashed border-pidgey-muted' : 'border-transparent'
                                     }`}>
                                         {stamp.art_path ? (
-                                            <img src={stamp.art_path} className="w-full h-full object-cover" />
+                                            <img src={stamp.art_path} className="w-full h-full object-contain p-1" />
                                         ) : (
                                             <AlertTriangle size={14} className="text-yellow-500" />
                                         )}
@@ -302,7 +285,7 @@ export const Playground = () => {
                                         : 'bg-pidgey-dark/50 border-pidgey-border hover:border-pidgey-muted'
                                     }`}
                                 >
-                                    <div className="w-12 h-8 rounded bg-black/40 flex items-center justify-center overflow-hidden border border-pidgey-border">
+                                    <div className="w-12 h-16 rounded bg-black/40 flex items-center justify-center overflow-hidden border border-pidgey-border">
                                         {tpl.url ? <img src={tpl.url} className="w-full h-full object-cover" /> : <LayoutTemplate size={14} className="text-pidgey-muted"/>}
                                     </div>
                                     <div className="flex-1 min-w-0">
@@ -325,81 +308,62 @@ export const Playground = () => {
                     </div>
                 ) : (
                     <div className="flex-1 flex gap-6 p-6">
-                        {/* Artwork Preview Canvas with 3D Flip */}
-                        <div className="flex-1 flex flex-col items-center justify-center bg-[radial-gradient(#334155_1px,transparent_1px)] [background-size:16px_16px] rounded-xl border border-pidgey-border relative overflow-hidden [perspective:1000px]">
+                        {/* Artwork Preview Canvas */}
+                        <div className="flex-1 flex flex-col items-center justify-center bg-[radial-gradient(#334155_1px,transparent_1px)] [background-size:16px_16px] rounded-xl border border-pidgey-border relative overflow-hidden">
                             
-                            {/* Card Container (The flipper) */}
-                            <div 
-                                style={{ width: dims.width, height: dims.height }}
-                                className={`relative shadow-2xl transition-transform duration-700 [transform-style:preserve-3d] ${
-                                    isFlipped ? '[transform:rotateY(180deg)]' : ''
-                                }`}
-                            >
-                                {/* Front Face (Art) */}
-                                <div className="absolute inset-0 [backface-visibility:hidden] bg-white rounded-lg overflow-hidden border-4 border-white shadow-sm flex flex-col items-center justify-center">
-                                    {previewUrl ? (
-                                        <img src={previewUrl} className="w-full h-full object-cover" alt="Card Front" />
-                                    ) : (
-                                        <div className="flex flex-col items-center justify-center text-slate-300">
-                                            <ImageIcon size={48} className="mb-2 opacity-50" />
-                                            <p className="text-xs uppercase font-bold text-slate-400">Front Art</p>
-                                        </div>
-                                    )}
-                                    {isProcessing && !isFlipped && (
-                                        <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center text-white backdrop-blur-sm z-10">
-                                            <Loader className="animate-spin mb-2" size={32} />
-                                            <span className="text-xs font-bold uppercase">Generating...</span>
-                                        </div>
-                                    )}
-                                </div>
+                            <div className={`relative overflow-hidden bg-white group transition-all duration-500 ${
+                                mode === 'stamps' 
+                                ? 'w-[300px] h-[400px] rounded-lg border-[8px] border-dotted border-pidgey-border/50 bg-pidgey-panel shadow-inner p-4' // Stamp Style Oblong
+                                : 'w-[300px] h-[400px] rounded-lg shadow-2xl' // Template Style Oblong
+                            }`}>
+                                {previewUrl ? (
+                                    <img src={previewUrl} className={`w-full h-full object-cover ${mode === 'stamps' ? 'p-2' : ''}`} />
+                                ) : (
+                                    <div className="w-full h-full flex flex-col items-center justify-center text-slate-400 bg-slate-100">
+                                        <ImageIcon size={48} className="mx-auto mb-2 opacity-50" />
+                                        <p className="text-xs uppercase font-bold">No Art Set</p>
+                                    </div>
+                                )}
+                                
+                                {/* Template Preview Overlay */}
+                                {mode === 'templates' && showTextOverlay && (
+                                    <div className={`absolute inset-0 flex flex-col p-8 pointer-events-none ${textConfig.vertical}`}>
+                                        <h2 
+                                            style={{ color: textConfig.color, fontSize: `${textConfig.size}px` }}
+                                            className={`${textConfig.font} ${textConfig.align} font-bold drop-shadow-md whitespace-pre-wrap leading-tight`}
+                                        >
+                                            {textConfig.text}
+                                        </h2>
+                                    </div>
+                                )}
 
-                                {/* Back Face (Message) */}
-                                <div className="absolute inset-0 [backface-visibility:hidden] [transform:rotateY(180deg)] bg-[#f8f5e6] rounded-lg overflow-hidden border-4 border-white shadow-sm p-6 flex flex-col text-slate-800">
-                                    {/* Simulated Paper Texture */}
-                                    <div className="absolute inset-0 opacity-10 bg-[url('https://www.transparenttextures.com/patterns/cardboard.png')] pointer-events-none"></div>
-                                    
-                                    {/* Text Content */}
-                                    {mode === 'templates' && (
-                                        <div className={`flex-1 flex flex-col relative z-10 ${textConfig.vertical}`}>
-                                            <h2 
-                                                style={{ color: textConfig.color, fontSize: `${textConfig.size}px` }}
-                                                className={`${textConfig.font} ${textConfig.align} font-bold leading-relaxed whitespace-pre-wrap`}
-                                            >
-                                                {textConfig.text}
-                                            </h2>
-                                        </div>
-                                    )}
-                                    {mode === 'stamps' && (
-                                        <div className="flex-1 flex flex-col items-center justify-center opacity-30">
-                                            <div className="w-20 h-24 border-2 border-dashed border-slate-400 rounded"></div>
-                                            <p className="text-[10px] mt-2 font-bold uppercase tracking-widest">Postcard Back</p>
-                                        </div>
-                                    )}
-                                </div>
+                                {isProcessing && (
+                                    <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center text-white backdrop-blur-sm z-10">
+                                        <Loader className="animate-spin mb-2" size={32} />
+                                        <span className="text-xs font-bold uppercase">Processing...</span>
+                                    </div>
+                                )}
                             </div>
                             
-                            {/* Canvas Controls (Flip / Open) */}
+                            {/* Canvas Controls */}
                             {mode === 'templates' && (
-                                <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex gap-3">
-                                    <button 
-                                        onClick={() => setIsFlipped(!isFlipped)}
-                                        className="bg-pidgey-dark/90 backdrop-blur border border-pidgey-border rounded-full px-4 py-2 flex items-center gap-2 text-xs font-bold text-white hover:bg-pidgey-panel transition shadow-lg"
-                                    >
-                                        <Repeat size={14} /> Flip Card
-                                    </button>
-                                    <button 
-                                        onClick={handleTestOpen}
-                                        className="bg-pidgey-accent text-pidgey-dark border border-pidgey-accent rounded-full px-4 py-2 flex items-center gap-2 text-xs font-bold hover:bg-teal-300 transition shadow-lg"
-                                    >
-                                        <MailOpen size={14} /> Test Open
-                                    </button>
+                                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-pidgey-dark/90 backdrop-blur border border-pidgey-border rounded-full px-4 py-2 flex gap-4">
+                                    <label className="flex items-center gap-2 text-xs font-bold cursor-pointer">
+                                        <input 
+                                            type="checkbox" 
+                                            checked={showTextOverlay} 
+                                            onChange={e => setShowTextOverlay(e.target.checked)} 
+                                            className="rounded border-pidgey-border bg-pidgey-panel text-pidgey-accent"
+                                        />
+                                        <Type size={14} /> Show Text Overlay
+                                    </label>
                                 </div>
                             )}
 
                             <div className="absolute top-4 right-4">
                                 <button 
                                     onClick={handleSave}
-                                    disabled={(!previewUrl && !isFlipped) || isProcessing}
+                                    disabled={!previewUrl || isProcessing}
                                     className="px-4 py-2 bg-pidgey-accent text-pidgey-dark font-bold rounded-lg hover:bg-teal-300 transition flex items-center gap-2 disabled:opacity-50 shadow-lg"
                                 >
                                     <Save size={16} /> Save {mode === 'stamps' ? 'Stamp' : 'Template'}
@@ -421,56 +385,28 @@ export const Playground = () => {
                             <div className="bg-pidgey-panel border border-pidgey-border rounded-xl flex-1 flex flex-col overflow-hidden">
                                 <div className="flex border-b border-pidgey-border">
                                     <button 
-                                        onClick={() => { setActiveTab('upload'); setIsFlipped(false); }}
+                                        onClick={() => setActiveTab('upload')}
                                         className={`flex-1 py-3 text-[10px] font-bold uppercase transition ${activeTab === 'upload' ? 'bg-pidgey-accent/10 text-pidgey-accent border-b-2 border-pidgey-accent' : 'text-pidgey-muted hover:text-white'}`}
                                     >
-                                        Art (Front)
+                                        Upload
                                     </button>
                                     <button 
-                                        onClick={() => { setActiveTab('ai'); setIsFlipped(false); }}
+                                        onClick={() => setActiveTab('ai')}
                                         className={`flex-1 py-3 text-[10px] font-bold uppercase transition ${activeTab === 'ai' ? 'bg-pidgey-accent/10 text-pidgey-accent border-b-2 border-pidgey-accent' : 'text-pidgey-muted hover:text-white'}`}
                                     >
-                                        AI Gen
+                                        Generate
                                     </button>
                                     {mode === 'templates' && (
                                         <button 
-                                            onClick={() => { setActiveTab('design'); setIsFlipped(true); }}
+                                            onClick={() => setActiveTab('design')}
                                             className={`flex-1 py-3 text-[10px] font-bold uppercase transition ${activeTab === 'design' ? 'bg-pidgey-accent/10 text-pidgey-accent border-b-2 border-pidgey-accent' : 'text-pidgey-muted hover:text-white'}`}
                                         >
-                                            Msg (Back)
+                                            Design
                                         </button>
                                     )}
                                 </div>
 
                                 <div className="p-6 flex-1 overflow-y-auto">
-                                    {/* Aspect Ratio Selector (Visible in AI and Design modes mostly) */}
-                                    <div className="mb-6">
-                                        <label className="block text-xs font-bold text-pidgey-muted uppercase mb-2">Aspect Ratio</label>
-                                        <div className="flex gap-2 bg-pidgey-dark rounded-lg p-1 border border-pidgey-border justify-between">
-                                            {[
-                                                { id: '1:1', icon: Square, label: 'Sq' },
-                                                { id: '3:4', icon: RectangleVertical, label: 'Port' },
-                                                { id: '4:3', icon: RectangleHorizontal, label: 'Land' },
-                                                { id: '9:16', icon: RectangleVertical, label: 'Tall' },
-                                                { id: '16:9', icon: RectangleHorizontal, label: 'Wide' }
-                                            ].map((r: any) => (
-                                                <button
-                                                    key={r.id}
-                                                    onClick={() => setAspectRatio(r.id)}
-                                                    className={`p-1.5 rounded flex flex-col items-center gap-1 transition ${
-                                                        aspectRatio === r.id 
-                                                        ? 'bg-pidgey-panel text-white shadow-sm' 
-                                                        : 'text-pidgey-muted hover:text-white'
-                                                    }`}
-                                                    title={r.id}
-                                                >
-                                                    <r.icon size={16} />
-                                                    <span className="text-[9px] font-bold">{r.label}</span>
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-
                                     {activeTab === 'upload' && (
                                         <div className="h-full flex flex-col items-center justify-center text-center space-y-4">
                                             <input 
@@ -516,16 +452,14 @@ export const Playground = () => {
                                     )}
 
                                     {activeTab === 'design' && mode === 'templates' && (
-                                        <div className="space-y-6 animate-in slide-in-from-right-4">
+                                        <div className="space-y-6">
                                             <div>
-                                                <label className="block text-xs font-bold text-pidgey-muted uppercase mb-2">Back Side Message</label>
+                                                <label className="block text-xs font-bold text-pidgey-muted uppercase mb-2">Message</label>
                                                 <textarea 
                                                     value={textConfig.text}
                                                     onChange={(e) => setTextConfig({...textConfig, text: e.target.value})}
-                                                    className="w-full h-32 bg-pidgey-dark border border-pidgey-border rounded-lg p-3 text-sm focus:border-pidgey-accent outline-none"
-                                                    placeholder="Type your message here..."
+                                                    className="w-full h-20 bg-pidgey-dark border border-pidgey-border rounded-lg p-3 text-sm focus:border-pidgey-accent outline-none"
                                                 />
-                                                <p className="text-[10px] text-pidgey-muted mt-1">This appears on the flip side.</p>
                                             </div>
 
                                             <div>
