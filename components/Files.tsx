@@ -81,7 +81,6 @@ export const Files = () => {
     const [taggingId, setTaggingId] = useState<string | null>(null);
     const [isUploading, setIsUploading] = useState(false);
     const [isSyncing, setIsSyncing] = useState(false);
-    const [isSeeding, setIsSeeding] = useState(false);
     
     // Stamp Creation State
     const [isStampModalOpen, setIsStampModalOpen] = useState(false);
@@ -103,30 +102,24 @@ export const Files = () => {
 
     const fetchData = async () => {
         setLoading(true);
-        const { data } = await AdminService.files.list(selectedBucket);
+        const { data, error } = await AdminService.files.list(selectedBucket);
+        if (error) {
+            console.error("Fetch error:", error);
+            // In a real scenario, you might want to show a toast
+        }
         setFiles(data);
         setLoading(false);
     };
 
     const handleSync = async () => {
         setIsSyncing(true);
-        await fetchData();
-        // Artificial delay to show visual feedback if fetch is too fast
-        await new Promise(resolve => setTimeout(resolve, 500));
-        setIsSyncing(false);
-    };
-
-    const handleSeedBucket = async () => {
-        if (!confirm(`This will download sample files and upload them to your '${selectedBucket}' bucket in Supabase. Continue?`)) return;
-        setIsSeeding(true);
-        const res = await AdminService.files.importDefaults(selectedBucket);
-        if (res.success) {
-            alert(`Successfully imported ${res.count} files!`);
-            fetchData();
+        const { data, error } = await AdminService.files.list(selectedBucket);
+        if (error) {
+             alert(`Sync failed: ${error.message || 'Check console details'}`);
         } else {
-            alert(`Import failed: ${res.error?.message || 'Unknown error'}`);
+             setFiles(data);
         }
-        setIsSeeding(false);
+        setIsSyncing(false);
     };
 
     const handleAutoTag = async (file: Asset) => {
@@ -344,16 +337,6 @@ export const Files = () => {
                             <p>No files found in <strong>{selectedBucket}</strong>.</p>
                             <div className="flex justify-center gap-4 mt-4">
                                 <button onClick={handleUploadClick} className="text-pidgey-accent hover:underline text-sm">Upload one now</button>
-                                {(selectedBucket === 'stamps' || selectedBucket === 'templates') && (
-                                     <button 
-                                        onClick={handleSeedBucket}
-                                        disabled={isSeeding}
-                                        className="flex items-center gap-2 px-3 py-1.5 bg-pidgey-dark border border-pidgey-border rounded hover:bg-white/5 text-xs font-bold text-pidgey-muted transition disabled:opacity-50"
-                                    >
-                                        <Database size={12} className={isSeeding ? 'animate-spin' : ''}/>
-                                        {isSeeding ? 'Seeding...' : 'Seed Sample Data'}
-                                    </button>
-                                )}
                             </div>
                         </div>
                     )}
