@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { FolderOpen, Image as ImageIcon, FileText, Grid, List, Download, Trash2, Search, Upload, Sparkles, Loader, Plus, X, Save, Tag, RefreshCw } from 'lucide-react';
+import { FolderOpen, Image as ImageIcon, FileText, Grid, List, Download, Trash2, Search, Upload, Sparkles, Loader, Plus, X, Save, Tag, RefreshCw, Database } from 'lucide-react';
 import { AdminService } from '../services/adminService';
 import { generateTagsForAsset } from '../services/geminiService';
 import { Asset, AssetType, Stamp, StampRarity, StampStatus } from '../types';
@@ -81,6 +81,7 @@ export const Files = () => {
     const [taggingId, setTaggingId] = useState<string | null>(null);
     const [isUploading, setIsUploading] = useState(false);
     const [isSyncing, setIsSyncing] = useState(false);
+    const [isSeeding, setIsSeeding] = useState(false);
     
     // Stamp Creation State
     const [isStampModalOpen, setIsStampModalOpen] = useState(false);
@@ -113,6 +114,19 @@ export const Files = () => {
         // Artificial delay to show visual feedback if fetch is too fast
         await new Promise(resolve => setTimeout(resolve, 500));
         setIsSyncing(false);
+    };
+
+    const handleSeedBucket = async () => {
+        if (!confirm(`This will download sample files and upload them to your '${selectedBucket}' bucket in Supabase. Continue?`)) return;
+        setIsSeeding(true);
+        const res = await AdminService.files.importDefaults(selectedBucket);
+        if (res.success) {
+            alert(`Successfully imported ${res.count} files!`);
+            fetchData();
+        } else {
+            alert(`Import failed: ${res.error?.message || 'Unknown error'}`);
+        }
+        setIsSeeding(false);
     };
 
     const handleAutoTag = async (file: Asset) => {
@@ -328,7 +342,19 @@ export const Files = () => {
                         <div className="col-span-full py-12 text-center text-pidgey-muted border-2 border-dashed border-pidgey-border rounded-xl">
                             <ImageIcon size={48} className="mx-auto mb-4 opacity-20" />
                             <p>No files found in <strong>{selectedBucket}</strong>.</p>
-                            <button onClick={handleUploadClick} className="text-pidgey-accent hover:underline mt-2">Upload one now</button>
+                            <div className="flex justify-center gap-4 mt-4">
+                                <button onClick={handleUploadClick} className="text-pidgey-accent hover:underline text-sm">Upload one now</button>
+                                {(selectedBucket === 'stamps' || selectedBucket === 'templates') && (
+                                     <button 
+                                        onClick={handleSeedBucket}
+                                        disabled={isSeeding}
+                                        className="flex items-center gap-2 px-3 py-1.5 bg-pidgey-dark border border-pidgey-border rounded hover:bg-white/5 text-xs font-bold text-pidgey-muted transition disabled:opacity-50"
+                                    >
+                                        <Database size={12} className={isSeeding ? 'animate-spin' : ''}/>
+                                        {isSeeding ? 'Seeding...' : 'Seed Sample Data'}
+                                    </button>
+                                )}
+                            </div>
                         </div>
                     )}
                 </div>

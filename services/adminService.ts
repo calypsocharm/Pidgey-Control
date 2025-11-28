@@ -86,26 +86,7 @@ export const AdminService = {
       // System Seed / Migration
       seed: async () => {
           console.log("Starting Migration...");
-          
-          // 1. Migrate Profiles
-          // Note: In real app, we can't insert into auth.users easily from client.
-          // We will insert into public.profiles for demo visualization.
-          /*
-          for (const p of MOCK_PROFILES) {
-              const { error } = await supabase.from('profiles').upsert({
-                  id: p.id,
-                  email: p.email,
-                  full_name: p.full_name,
-                  role: p.role,
-                  tier: p.tier,
-                  egg_balance: p.egg_balance,
-                  created_at: p.created_at,
-                  last_seen: p.last_seen
-              });
-              if (error) console.error("Profile Migrate Error", error);
-          }
-          */
-          console.log("Migration logic would run here (commented out for safety in this demo).");
+          // Logic to seed initial data if needed
           return { success: true };
       }
   },
@@ -161,7 +142,6 @@ export const AdminService = {
 
     ban: async (id: string, reason: string) => {
         console.log(`[AUDIT] Banning user ${id} reason: ${reason}`);
-        // In real app, update a 'status' column or 'banned_at'
         const { error } = await supabase.from('profiles').update({ status: 'banned' }).eq('id', id);
         return { error };
     },
@@ -237,6 +217,18 @@ export const AdminService = {
     }
   },
 
+  // --- Stamps (Real DB) ---
+  stamps: {
+      list: async (): Promise<ListResponse<any>> => {
+          const { data, count, error } = await supabase.from('stamps').select('*', { count: 'exact' });
+          return { data: data || [], count: count || 0, error };
+      },
+      create: async (stamp: any) => {
+          const { data, error } = await supabase.from('stamps').insert(stamp).select().single();
+          return { data, error };
+      }
+  },
+
   // --- Tickets ---
 
   tickets: {
@@ -262,8 +254,7 @@ export const AdminService = {
     list: async (): Promise<ListResponse<Broadcast>> => {
        const { data, error, count } = await supabase.from('broadcasts').select('*', { count: 'exact' });
        if (error) {
-           // Fallback to mocks if table doesn't exist yet
-           return { data: MOCK_BROADCASTS, count: MOCK_BROADCASTS.length, error: null };
+           return { data: [], count: 0, error: null }; // No mock fallback
        }
        return { data: (data as unknown as Broadcast[]) || [], count: count || 0, error };
     },
@@ -278,19 +269,22 @@ export const AdminService = {
     list: async (): Promise<ListResponse<Promo>> => {
        const { data, error, count } = await supabase.from('promos').select('*', { count: 'exact' });
        if (error) {
-           return { data: MOCK_PROMOS, count: MOCK_PROMOS.length, error: null };
+           return { data: [], count: 0, error: null }; // No mock fallback
        }
        return { data: (data as unknown as Promo[]) || [], count: count || 0, error };
     }
   },
 
-  // --- Files (Real Storage) ---
+  // --- Files (Real Storage ONLY) ---
   files: {
     list: async (bucket: string = 'stamps'): Promise<ListResponse<Asset>> => {
         try {
+            console.log(`Fetching files from bucket: ${bucket}`);
             const { data: files, error } = await supabase.storage.from(bucket).list();
             
             if (error) throw error;
+            
+            console.log(`Found ${files?.length || 0} files in ${bucket}`);
 
             // Helper to determine asset type from bucket
             const getAssetType = (b: string): AssetType => {
@@ -317,11 +311,7 @@ export const AdminService = {
             return { data: realAssets, count: realAssets.length, error: null };
 
         } catch (e: any) {
-            console.warn(`Storage fetch failed for bucket ${bucket}:`, e.message);
-            // Return mocks only if we are browsing stamps/templates and fail (graceful degradation)
-            if (bucket === 'stamps' || bucket === 'templates') {
-                 return { data: MOCK_ASSETS.filter(a => a.type === (bucket === 'stamps' ? AssetType.STAMP_ART : AssetType.CARD_TEMPLATE)), count: 0, error: null };
-            }
+            console.error(`Storage fetch failed for bucket ${bucket}:`, e.message);
             return { data: [], count: 0, error: e };
         }
     },
@@ -367,6 +357,35 @@ export const AdminService = {
             console.error("Delete failed", e);
             return { error: e };
         }
+    },
+
+    importDefaults: async (bucket: string) => {
+        console.log(`Seeding bucket ${bucket} with defaults...`);
+        try {
+            const defaults = MOCK_ASSETS.filter(a => {
+                if (bucket === 'stamps') return a.type === AssetType.STAMP_ART;
+                if (bucket === 'templates') return a.type === AssetType.CARD_TEMPLATE;
+                return false;
+            });
+            
+            if (defaults.length === 0) return { success: false, message: "No defaults for this bucket" };
+
+            let count = 0;
+            for (const asset of defaults) {
+                // 1. Fetch the image from the external URL
+                const response = await fetch(asset.url);
+                const blob = await response.blob();
+                const file = new File([blob], asset.name, { type: blob.type });
+                
+                // 2. Upload to Supabase
+                const { error } = await supabase.storage.from(bucket).upload(asset.name, file, { upsert: true });
+                if (!error) count++;
+            }
+            return { success: true, count };
+        } catch (e: any) {
+            console.error("Import failed:", e);
+            return { success: false, error: e };
+        }
     }
   },
 
@@ -392,14 +411,9 @@ export const AdminService = {
           );
       },
 
-      // Simulate syncing with external SMTP2GO API
       syncSmtpGo: async (apiKey: string): Promise<DeliveryJourney[]> => {
           console.log(`[SMTP2GO] Syncing logs with key: ${apiKey.substring(0, 4)}...`);
-          
-          // In a real app, this would be:
-          // const res = await fetch('https://api.smtp2go.com/v3/email/search', { headers: { 'X-Smtp2go-Api-Key': apiKey } });
-          
-          // We return a "new" mock journey to simulate finding data
+          // Mock sync logic retained for Flight Path as it connects to external API
           const newJourney: DeliveryJourney = {
               message_id: 'smtp_new_1',
               recipient: 'found.via.api@example.com',
