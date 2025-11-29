@@ -1,7 +1,8 @@
-
 import { supabase } from './supabaseClient';
 import { Profile, Drop, Ticket, DropStatus, Broadcast, Promo, Asset, AssetType, DeliveryJourney, DeliveryStatus, BroadcastChannel, Transaction, Role, Tier, Stamp } from '../types';
 import { MOCK_BROADCASTS, MOCK_PROMOS, MOCK_ASSETS, MOCK_DELIVERIES, MOCK_FLIGHT_PATHS, MOCK_PROFILES } from '../constants';
+
+const BACKEND_API = 'https://backend-api-600206000330.us-west1.run.app';
 
 // Helper for ID generation that works in all contexts (including non-secure HTTP)
 const safeUUID = () => {
@@ -495,13 +496,13 @@ export const AdminService = {
                 .from('tickets')
                 .select('id, subject, priority, status')
                 .eq('status', 'open')
-                .limit(5);
+                .limit(50); // Increased limit for smarter context
 
             // 2. Real Drops
             const { data: activeDrops } = await supabase
                 .from('drops')
-                .select('title, status')
-                .eq('status', 'live');
+                .select('title, status, start_at')
+                .limit(20);
 
             // 3. Real Revenue (Last 24h)
             const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
@@ -519,7 +520,7 @@ export const AdminService = {
             const { data: recentBroadcasts } = await supabase
                 .from('broadcasts')
                 .select('name, status, stats')
-                .limit(3);
+                .limit(5);
                 
             const { data: activePromos } = await supabase
                 .from('promos')
@@ -545,57 +546,41 @@ export const AdminService = {
       }
   },
 
-  // --- System Health (Virtual Backend Endpoints) ---
+  // --- System Health (Real Backend Integration) ---
   health: {
       getSystem: async () => {
-          return {
-              version: 'v1.3.0',
-              status: 'operational',
-              timestamp: new Date().toISOString(),
-              environment: process.env.NODE_ENV || 'development'
-          };
+          try {
+              const res = await fetch(`${BACKEND_API}/admin/health`);
+              if (!res.ok) throw new Error(`HTTP ${res.status}`);
+              return await res.json();
+          } catch (e: any) {
+              return { 
+                  version: 'Unknown', 
+                  status: 'error', 
+                  timestamp: new Date().toISOString(), 
+                  error: e.message 
+              };
+          }
       },
       
       getSupabase: async () => {
-          const t0 = performance.now();
-          let dbStatus = 'disconnected';
-          let storageStatus = 'disconnected';
-          let error = null;
-          
           try {
-              // Lightweight DB Check
-              const { error: dbErr } = await supabase.from('profiles').select('count', { count: 'exact', head: true });
-              if (dbErr) throw dbErr;
-              dbStatus = 'connected';
-              
-              // Lightweight Storage Check
-              // listBuckets is safer for admin role.
-              const { data: buckets, error: listErr } = await supabase.storage.listBuckets();
-              if (listErr) throw listErr;
-              storageStatus = 'active';
-              
+              const res = await fetch(`${BACKEND_API}/admin/supabase-status`);
+              if (!res.ok) throw new Error(`HTTP ${res.status}`);
+              return await res.json();
           } catch (e: any) {
-              error = e.message;
+              return { dbStatus: 'error', storageStatus: 'error', error: e.message };
           }
-          
-          return {
-              dbStatus,
-              storageStatus,
-              latency_ms: Math.round(performance.now() - t0),
-              error
-          };
       },
       
       getSmtp: async () => {
-          // Check locally stored config as proxy for "backend config"
-          const key = localStorage.getItem('smtp2go_key');
-          // Mock ping based on config presence
-          const isHealthy = !!key; 
-          return {
-              keyPresent: !!key,
-              relayStatus: isHealthy ? 'active' : 'configured_required',
-              provider: 'SMTP2GO'
-          };
+          try {
+               const res = await fetch(`${BACKEND_API}/admin/smtp-status`);
+               if (!res.ok) throw new Error(`HTTP ${res.status}`);
+               return await res.json();
+          } catch (e: any) {
+              return { keyPresent: false, relayStatus: 'error', error: e.message };
+          }
       }
   },
 

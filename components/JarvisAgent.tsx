@@ -14,7 +14,7 @@ export const JarvisAgent: React.FC = () => {
     const [isLoadingBrief, setIsLoadingBrief] = useState(false);
     
     const [messages, setMessages] = useState<ChatMessage[]>([
-        { id: '1', role: 'assistant', content: "Peep! I'm Pidgey. How's the nest looking today?", timestamp: new Date() }
+        { id: '1', role: 'assistant', content: "Peep peep! 🐦 I'm ready to help! What's the plan, Boss?", timestamp: new Date() }
     ]);
     const [input, setInput] = useState('');
     const [isTyping, setIsTyping] = useState(false);
@@ -124,7 +124,7 @@ export const JarvisAgent: React.FC = () => {
              setMessages(prev => [...prev, {
                 id: Date.now().toString() + '_nav',
                 role: 'assistant',
-                content: `*Navigating to ${path}...* 🚁`,
+                content: `*Flapping wings... navigating to ${path}!* 🚁`,
                 timestamp: new Date()
              }]);
         }
@@ -179,7 +179,7 @@ export const JarvisAgent: React.FC = () => {
                     </div>
                     <div>
                         <h3 className="font-bold text-white text-lg leading-none">Pidgey</h3>
-                        <span className="text-[11px] text-pidgey-muted font-medium">Ops Copilot v2.0</span>
+                        <span className="text-[11px] text-pidgey-muted font-medium">Ops Copilot v2.0 (Sweet & Smart)</span>
                     </div>
                 </div>
                 <button onClick={closePidgey} className="p-2 hover:bg-white/5 rounded-full text-pidgey-muted hover:text-white transition-colors">
@@ -197,7 +197,7 @@ export const JarvisAgent: React.FC = () => {
                             : 'text-pidgey-muted hover:text-white hover:bg-pidgey-panel/50'
                     }`}
                 >
-                    <CheckCircle2 size={16} /> Today
+                    <CheckCircle2 size={16} /> Briefing
                 </button>
                 <button 
                     onClick={() => setActiveTab('chat')}
@@ -207,7 +207,7 @@ export const JarvisAgent: React.FC = () => {
                             : 'text-pidgey-muted hover:text-white hover:bg-pidgey-panel/50'
                     }`}
                 >
-                    <Sparkles size={16} /> Ask Pidgey
+                    <Sparkles size={16} /> Chat
                 </button>
             </div>
 
@@ -253,7 +253,7 @@ export const JarvisAgent: React.FC = () => {
                                                 <Bird size={16} className="text-pidgey-accent" />
                                             </div>
                                         )}
-                                        <div className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm ${
+                                        <div className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm shadow-sm ${
                                             msg.role === 'user' 
                                                 ? 'bg-pidgey-accent text-pidgey-dark font-medium rounded-tr-sm' 
                                                 : 'bg-pidgey-panel border border-pidgey-border text-pidgey-text rounded-tl-sm'
@@ -274,7 +274,7 @@ export const JarvisAgent: React.FC = () => {
                                                 {getActionTitle(msg.action)}
                                             </p>
                                             <p className="text-xs text-pidgey-muted mb-3">
-                                                Ready for your review. I've pre-filled the details.
+                                                I've prepared this for you, Boss! Ready to review?
                                             </p>
                                             <button 
                                                 onClick={() => handleReviewAction(msg.action)}
@@ -309,7 +309,7 @@ export const JarvisAgent: React.FC = () => {
                                     value={input}
                                     onChange={(e) => setInput(e.target.value)}
                                     onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
-                                    placeholder="Try: 'Draft a promo' or 'Where are the logs?'"
+                                    placeholder="Ask me to draft a promo, check revenue, or tell a joke..."
                                     className="w-full bg-pidgey-dark border border-pidgey-border rounded-xl pl-4 pr-12 py-3 text-sm focus:outline-none focus:border-pidgey-accent focus:ring-1 focus:ring-pidgey-accent text-white placeholder-pidgey-muted transition-all"
                                 />
                                 <button 
