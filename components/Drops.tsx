@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Egg, Sparkles, Plus, Edit, Trash2, X, Save, Calendar, Loader, Image as ImageIcon, AlertTriangle, Upload } from 'lucide-react';
+import { Egg, Sparkles, Plus, Edit, Trash2, X, Save, Calendar, Loader, Image as ImageIcon, AlertTriangle, Upload, Search, CheckCircle2, Library } from 'lucide-react';
 import { AdminService } from '../services/adminService';
-import { Drop, DropStatus, Stamp, StampRarity, StampStatus } from '../types';
+import { Drop, DropStatus, Stamp, StampRarity, StampStatus, Asset } from '../types';
 import { MOCK_STAMPS } from '../constants'; // Fallback for stamps if API fails
 import { useJarvis } from '../JarvisContext';
 
@@ -17,9 +17,12 @@ export const Drops = () => {
     // Stamp Builder State (Stamps inside the current drop)
     const [dropStamps, setDropStamps] = useState<Partial<Stamp>[]>([]);
     
-    // Upload State for Builder
-    const [uploadingSlot, setUploadingSlot] = useState<number | null>(null);
-    const fileInputRef = useRef<HTMLInputElement>(null);
+    // Asset Picker State
+    const [isAssetPickerOpen, setIsAssetPickerOpen] = useState(false);
+    const [libraryAssets, setLibraryAssets] = useState<Asset[]>([]);
+    const [loadingAssets, setLoadingAssets] = useState(false);
+    const [pickingSlotIndex, setPickingSlotIndex] = useState<number | null>(null);
+    const [assetSearch, setAssetSearch] = useState('');
     
     // Context for Pidgey's Drafts
     const { draftPayload, setDraftPayload } = useJarvis();
@@ -135,45 +138,74 @@ export const Drops = () => {
         setDropStamps(newStamps);
     };
 
-    const triggerUpload = (index: number) => {
-        setUploadingSlot(index);
-        fileInputRef.current?.click();
+    // Open the Asset Picker
+    // If index is null, it means we are adding a NEW slot from the library
+    const openAssetPicker = async (index: number | null) => {
+        setPickingSlotIndex(index);
+        setIsAssetPickerOpen(true);
+        setLoadingAssets(true);
+        // Fetch from 'stamps' bucket
+        const { data } = await AdminService.files.list('stamps');
+        setLibraryAssets(data);
+        setLoadingAssets(false);
     };
 
-    const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file || uploadingSlot === null) return;
+    const selectAssetForSlot = (asset: Asset) => {
+        // Clean up name from filename
+        const cleanName = asset.name.split('/').pop()?.split('.')[0].replace(/_/g, ' ') || 'New Stamp';
+        const titleCaseName = cleanName.charAt(0).toUpperCase() + cleanName.slice(1);
 
-        // Optimistic UI
-        const newStamps = [...dropStamps];
-        
-        const { data, error } = await AdminService.files.upload(file, 'stamps');
-        
-        if (data) {
-             newStamps[uploadingSlot] = { 
-                 ...newStamps[uploadingSlot], 
-                 art_path: data.url,
-                 // Auto-fill name if empty
-                 name: newStamps[uploadingSlot].name || file.name.split('.')[0]
-             };
-             setDropStamps(newStamps);
+        if (pickingSlotIndex === null) {
+            // Create a NEW slot with this asset
+            if (dropStamps.length >= 10) {
+                alert("Max 10 stamps per drop.");
+                return;
+            }
+            setDropStamps([...dropStamps, { 
+                name: titleCaseName, 
+                rarity: StampRarity.COMMON, 
+                status: StampStatus.ACTIVE, 
+                art_path: asset.url 
+            }]);
         } else {
-            alert("Upload failed: " + error.message);
+            // Update EXISTING slot
+            const newStamps = [...dropStamps];
+            newStamps[pickingSlotIndex] = { 
+                ...newStamps[pickingSlotIndex], 
+                art_path: asset.url,
+                name: newStamps[pickingSlotIndex].name || titleCaseName // Only overwrite name if empty or default
+            };
+            setDropStamps(newStamps);
         }
         
-        setUploadingSlot(null);
-        if (fileInputRef.current) fileInputRef.current.value = '';
+        setIsAssetPickerOpen(false);
+        setPickingSlotIndex(null);
     };
 
-    const getRarityColor = (rarity: StampRarity | undefined) => {
+    // --- Visual Stylers ---
+
+    const getStampStyle = (rarity: StampRarity | undefined) => {
+        // Base stamp style: Padded, Rounded, Transition
+        let classes = "bg-pidgey-dark rounded-xl p-4 relative group transition-all duration-300 ease-out ";
+        
+        // Perforated Border Effect using dashed border + specific colors/shadows
         switch(rarity) {
-            case StampRarity.COMMON: return 'border-slate-500 text-slate-400';
-            case StampRarity.RARE: return 'border-blue-500 text-blue-400';
-            case StampRarity.LEGENDARY: return 'border-yellow-500 text-yellow-400';
-            case StampRarity.PIDGEY: return 'border-pidgey-secondary text-pidgey-secondary';
-            default: return 'border-slate-600';
+            case StampRarity.RARE: 
+                // Blue Glow
+                return classes + "border-[6px] border-dotted border-blue-500/50 shadow-[0_0_20px_-5px_rgba(59,130,246,0.5)] hover:shadow-[0_0_30px_rgba(59,130,246,0.6)]";
+            case StampRarity.LEGENDARY: 
+                // Gold Glow
+                return classes + "border-[6px] border-dotted border-yellow-500/60 shadow-[0_0_25px_-5px_rgba(234,179,8,0.6)] hover:shadow-[0_0_40px_rgba(234,179,8,0.8)] ring-1 ring-yellow-400/30";
+            case StampRarity.PIDGEY: 
+                // Purple Pulse
+                return classes + "border-[6px] border-dotted border-purple-500/60 shadow-[0_0_30px_-5px_rgba(168,85,247,0.7)] hover:shadow-[0_0_50px_rgba(168,85,247,0.9)] ring-1 ring-purple-400/30 animate-pulse-slow";
+            default: 
+                // Common (Slate)
+                return classes + "border-[6px] border-dotted border-pidgey-border hover:border-slate-500 hover:shadow-lg";
         }
     };
+
+    const filteredAssets = libraryAssets.filter(a => a.name.toLowerCase().includes(assetSearch.toLowerCase()));
 
     return (
         <div className="space-y-8">
@@ -283,7 +315,7 @@ export const Drops = () => {
             {/* Create/Edit Modal - WIDE MODE */}
             {isModalOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-                    <div className="bg-pidgey-panel border border-pidgey-border rounded-2xl w-full max-w-6xl shadow-2xl flex flex-col h-[90vh] animate-in zoom-in-95 duration-200 overflow-hidden">
+                    <div className="bg-pidgey-panel border border-pidgey-border rounded-2xl w-full max-w-6xl shadow-2xl flex flex-col h-[90vh] animate-in zoom-in-95 duration-200 overflow-hidden relative">
                         
                         {/* Modal Header */}
                         <div className="p-6 border-b border-pidgey-border flex justify-between items-center bg-pidgey-dark">
@@ -400,30 +432,36 @@ export const Drops = () => {
                             <div className="w-2/3 p-6 overflow-y-auto bg-pidgey-panel">
                                 <div className="flex justify-between items-center mb-6">
                                     <h3 className="text-sm font-bold text-white uppercase tracking-wider">2. Stamp Template Manager</h3>
-                                    <button onClick={addStampSlot} className="text-xs bg-pidgey-dark hover:bg-pidgey-border border border-pidgey-border px-3 py-1.5 rounded flex items-center gap-2 transition">
-                                        <Plus size={14} /> Add Template Slot
-                                    </button>
+                                    <div className="flex gap-2">
+                                        <button 
+                                            onClick={() => openAssetPicker(null)} 
+                                            className="text-xs bg-pidgey-secondary text-white border border-pidgey-secondary px-3 py-1.5 rounded flex items-center gap-2 transition hover:bg-purple-600"
+                                        >
+                                            <Library size={14} /> Add from Library
+                                        </button>
+                                        <button 
+                                            onClick={addStampSlot} 
+                                            className="text-xs bg-pidgey-dark hover:bg-pidgey-border border border-pidgey-border px-3 py-1.5 rounded flex items-center gap-2 transition"
+                                        >
+                                            <Plus size={14} /> Add Empty Slot
+                                        </button>
+                                    </div>
                                 </div>
-                                
-                                {/* Hidden Input for Uploads */}
-                                <input 
-                                    type="file" 
-                                    ref={fileInputRef} 
-                                    className="hidden" 
-                                    accept="image/png, image/jpeg"
-                                    onChange={handleFileChange}
-                                />
 
                                 {dropStamps.length === 0 ? (
                                     <div className="border-2 border-dashed border-pidgey-border rounded-xl h-64 flex flex-col items-center justify-center text-pidgey-muted gap-2">
                                         <Egg size={40} className="opacity-20" />
                                         <p>No stamps in this drop yet.</p>
-                                        <button onClick={addStampSlot} className="text-pidgey-accent hover:underline text-sm">Add your first stamp</button>
+                                        <div className="flex gap-2 mt-2">
+                                            <button onClick={() => openAssetPicker(null)} className="text-pidgey-secondary hover:underline text-sm font-bold">Pick from Library</button>
+                                            <span>or</span>
+                                            <button onClick={addStampSlot} className="text-pidgey-accent hover:underline text-sm font-bold">Create Blank Slot</button>
+                                        </div>
                                     </div>
                                 ) : (
-                                    <div className="grid grid-cols-2 xl:grid-cols-3 gap-4">
+                                    <div className="grid grid-cols-2 xl:grid-cols-3 gap-6">
                                         {dropStamps.map((stamp, idx) => (
-                                            <div key={idx} className={`bg-pidgey-dark border-4 border-dotted rounded-xl p-4 relative group transition-colors ${getRarityColor(stamp.rarity)}`}>
+                                            <div key={idx} className={getStampStyle(stamp.rarity)}>
                                                 
                                                 {/* Remove Button */}
                                                 <button onClick={() => removeStampSlot(idx)} className="absolute top-2 right-2 p-1.5 bg-pidgey-panel hover:bg-red-500/20 hover:text-red-400 rounded-full text-pidgey-muted transition opacity-0 group-hover:opacity-100 z-10">
@@ -432,15 +470,15 @@ export const Drops = () => {
 
                                                 {/* Art Placeholder - Oblong 3:4 */}
                                                 <div 
-                                                    onClick={() => triggerUpload(idx)}
+                                                    onClick={() => openAssetPicker(idx)}
                                                     className="aspect-[3/4] bg-pidgey-panel rounded-lg mb-3 flex items-center justify-center relative overflow-hidden group/image cursor-pointer hover:bg-pidgey-border transition-colors border border-transparent hover:border-pidgey-accent"
                                                 >
                                                     {stamp.art_path ? (
                                                         <img src={stamp.art_path} className="w-full h-full object-contain p-2" />
                                                     ) : (
                                                         <div className="flex flex-col items-center text-pidgey-muted/50">
-                                                            <Upload size={32} />
-                                                            <span className="text-[10px] uppercase font-bold mt-1 text-center">Click to Upload</span>
+                                                            <ImageIcon size={32} />
+                                                            <span className="text-[10px] uppercase font-bold mt-1 text-center">Select Asset</span>
                                                         </div>
                                                     )}
                                                     
@@ -450,12 +488,6 @@ export const Drops = () => {
                                                             <span className="text-xs font-bold text-white border border-white/50 px-2 py-1 rounded flex items-center gap-2">
                                                                 <Edit size={12}/> Change Art
                                                             </span>
-                                                        </div>
-                                                    )}
-                                                    
-                                                    {uploadingSlot === idx && (
-                                                        <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
-                                                            <Loader className="animate-spin text-white" />
                                                         </div>
                                                     )}
                                                 </div>
@@ -469,7 +501,7 @@ export const Drops = () => {
                                                         onChange={(e) => updateStampSlot(idx, 'name', e.target.value)}
                                                     />
                                                     
-                                                    <div className="flex justify-between items-center">
+                                                    <div className="flex justify-between items-center px-1">
                                                         <label className="text-[10px] font-bold text-pidgey-muted uppercase">Rarity</label>
                                                         <select 
                                                             className="bg-pidgey-panel text-[10px] text-white border border-pidgey-border rounded px-1 py-0.5 outline-none"
@@ -482,8 +514,8 @@ export const Drops = () => {
                                                 </div>
 
                                                 {/* Rarity Indicator Badge */}
-                                                <div className="absolute top-2 left-2">
-                                                     <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase bg-pidgey-dark/80 backdrop-blur border border-white/10`}>
+                                                <div className="absolute top-2 left-2 pointer-events-none">
+                                                     <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase bg-black/50 backdrop-blur text-white border border-white/10 shadow-sm`}>
                                                         {stamp.rarity}
                                                     </span>
                                                 </div>
@@ -501,6 +533,74 @@ export const Drops = () => {
                                 )}
                             </div>
                         </div>
+
+                        {/* ASSET LIBRARY PICKER MODAL (Layered) */}
+                        {isAssetPickerOpen && (
+                            <div className="absolute inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-4 animate-in fade-in">
+                                <div className="bg-pidgey-panel border border-pidgey-border w-full max-w-4xl h-[80vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+                                    <div className="p-4 border-b border-pidgey-border bg-pidgey-dark flex justify-between items-center">
+                                        <div>
+                                            <h3 className="font-bold text-lg">Select Stamp Asset</h3>
+                                            <p className="text-xs text-pidgey-muted">Choose art from your Stamps bucket</p>
+                                        </div>
+                                        <button onClick={() => setIsAssetPickerOpen(false)} className="p-2 hover:bg-white/10 rounded-full">
+                                            <X size={20} />
+                                        </button>
+                                    </div>
+                                    
+                                    <div className="p-4 border-b border-pidgey-border bg-pidgey-panel flex gap-4">
+                                        <div className="relative flex-1">
+                                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-pidgey-muted" size={16} />
+                                            <input 
+                                                type="text" 
+                                                placeholder="Search assets..." 
+                                                value={assetSearch}
+                                                onChange={(e) => setAssetSearch(e.target.value)}
+                                                className="w-full bg-pidgey-dark border border-pidgey-border rounded-lg pl-10 pr-4 py-2 text-sm focus:outline-none focus:border-pidgey-accent text-white"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="flex-1 overflow-y-auto p-6 bg-pidgey-dark/50">
+                                        {loadingAssets ? (
+                                            <div className="flex justify-center items-center h-full text-pidgey-muted">
+                                                <Loader className="animate-spin mr-2" /> Loading Library...
+                                            </div>
+                                        ) : filteredAssets.length === 0 ? (
+                                            <div className="flex flex-col items-center justify-center h-full text-pidgey-muted opacity-50">
+                                                <ImageIcon size={48} className="mb-4" />
+                                                <p>No assets found in 'stamps' bucket.</p>
+                                                <p className="text-xs">Go to Files to upload new art.</p>
+                                            </div>
+                                        ) : (
+                                            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-4">
+                                                {filteredAssets.map(asset => (
+                                                    <div 
+                                                        key={asset.id}
+                                                        onClick={() => selectAssetForSlot(asset)}
+                                                        className="aspect-[3/4] bg-pidgey-panel border border-pidgey-border rounded-xl cursor-pointer hover:border-pidgey-accent hover:ring-2 hover:ring-pidgey-accent/50 transition-all flex flex-col overflow-hidden group"
+                                                    >
+                                                        <div className="flex-1 p-2 flex items-center justify-center bg-[url('https://www.transparenttextures.com/patterns/stardust.png')]">
+                                                            <img src={asset.url} alt={asset.name} className="w-full h-full object-contain" />
+                                                        </div>
+                                                        <div className="p-2 bg-pidgey-dark border-t border-pidgey-border text-center">
+                                                            <p className="text-[10px] font-bold truncate text-pidgey-text group-hover:text-pidgey-accent">{asset.name}</p>
+                                                        </div>
+                                                        
+                                                        {/* Selected Indicator (Hover) */}
+                                                        <div className="absolute inset-0 bg-pidgey-accent/20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-[1px]">
+                                                            <div className="bg-pidgey-accent text-pidgey-dark rounded-full p-2 shadow-lg">
+                                                                <CheckCircle2 size={24} />
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </div>
             )}
