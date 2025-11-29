@@ -2,7 +2,9 @@ import { supabase } from './supabaseClient';
 import { Profile, Drop, Ticket, DropStatus, Broadcast, Promo, Asset, AssetType, DeliveryJourney, DeliveryStatus, BroadcastChannel, Transaction, Role, Tier, Stamp } from '../types';
 import { MOCK_BROADCASTS, MOCK_PROMOS, MOCK_ASSETS, MOCK_DELIVERIES, MOCK_FLIGHT_PATHS, MOCK_PROFILES } from '../constants';
 
-const BACKEND_API = 'https://backend-api-600206000330.us-west1.run.app';
+// Set to empty string to allow Vite proxy (setup in vite.config.js) to handle the routing
+// and avoid CORS issues during development.
+const BACKEND_API = '';
 
 // Helper for ID generation that works in all contexts (including non-secure HTTP)
 const safeUUID = () => {

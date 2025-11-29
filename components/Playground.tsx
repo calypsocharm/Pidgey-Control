@@ -231,9 +231,12 @@ export const Playground = () => {
                 <div className="p-3 border-b border-pidgey-border bg-pidgey-dark flex justify-between items-center">
                     <span className="text-xs font-bold text-pidgey-muted uppercase">{mode} Library</span>
                     <div className="flex gap-2">
-                         <button onClick={mode === 'stamps' ? handleNewStamp : handleNewTemplate} className="flex items-center gap-2 px-3 py-1.5 bg-pidgey-accent text-pidgey-dark rounded hover:bg-teal-300 transition text-xs font-bold" title={mode === 'stamps' ? "New Stamp" : "New Template"}>
-                            <Plus size={14} /> New
-                        </button>
+                         {/* Only show 'New' button here for Templates, Stamps use big button in list */}
+                         {mode === 'templates' && (
+                             <button onClick={handleNewTemplate} className="flex items-center gap-2 px-3 py-1.5 bg-pidgey-accent text-pidgey-dark rounded hover:bg-teal-300 transition text-xs font-bold" title="New Template">
+                                <Plus size={14} /> New
+                            </button>
+                         )}
                         <button onClick={loadData} className="p-1.5 hover:bg-white/10 rounded text-pidgey-muted hover:text-white transition">
                             <RefreshCw size={14} />
                         </button>
@@ -246,31 +249,50 @@ export const Playground = () => {
                         <div className="text-center py-8 text-pidgey-muted"><Loader className="animate-spin mx-auto mb-2"/> Loading...</div>
                     ) : (
                         mode === 'stamps' ? (
-                            [...(selectedStamp?.id === 'new' ? [selectedStamp] : []), ...stamps].map(stamp => (
-                                <div 
-                                    key={stamp.id} 
-                                    onClick={() => handleSelectStamp(stamp)}
-                                    className={`p-3 rounded-lg border cursor-pointer transition-all flex items-center gap-3 ${
-                                        selectedStamp?.id === stamp.id 
-                                        ? 'bg-pidgey-dark border-pidgey-accent ring-1 ring-pidgey-accent' 
-                                        : 'bg-pidgey-dark/50 border-pidgey-border hover:border-pidgey-muted'
+                            <>
+                                {/* Large "New Stamp" Button - Acts as Plus Button */}
+                                <button 
+                                    onClick={handleNewStamp}
+                                    className={`w-full p-2 mb-2 rounded-lg border flex items-center gap-3 group transition-all text-left ${
+                                        selectedStamp?.id === 'new'
+                                        ? 'bg-pidgey-dark border-pidgey-accent ring-1 ring-pidgey-accent'
+                                        : 'border-dashed border-pidgey-border hover:border-pidgey-accent hover:bg-pidgey-dark/50'
                                     }`}
                                 >
-                                    <div className={`w-12 h-16 rounded bg-black/40 flex items-center justify-center overflow-hidden border ${
-                                        !stamp.art_path ? 'border-dashed border-pidgey-muted' : 'border-transparent'
-                                    }`}>
-                                        {stamp.art_path ? (
-                                            <img src={stamp.art_path} className="w-full h-full object-contain p-1" />
-                                        ) : (
-                                            <AlertTriangle size={14} className="text-yellow-500" />
-                                        )}
+                                     <div className="w-12 h-16 rounded bg-pidgey-dark border-2 border-dotted border-pidgey-border group-hover:border-pidgey-accent flex items-center justify-center text-pidgey-muted group-hover:text-pidgey-accent transition-colors">
+                                        <Plus size={20} />
+                                     </div>
+                                     <div className="flex-1">
+                                         <span className="text-xs font-bold uppercase text-pidgey-muted group-hover:text-pidgey-text">New Stamp</span>
+                                     </div>
+                                </button>
+
+                                {[...stamps].map(stamp => (
+                                    <div 
+                                        key={stamp.id} 
+                                        onClick={() => handleSelectStamp(stamp)}
+                                        className={`p-3 rounded-lg border cursor-pointer transition-all flex items-center gap-3 ${
+                                            selectedStamp?.id === stamp.id 
+                                            ? 'bg-pidgey-dark border-pidgey-accent ring-1 ring-pidgey-accent' 
+                                            : 'bg-pidgey-dark/50 border-pidgey-border hover:border-pidgey-muted'
+                                        }`}
+                                    >
+                                        <div className={`w-12 h-16 rounded bg-black/40 flex items-center justify-center overflow-hidden border-2 ${
+                                            !stamp.art_path ? 'border-dashed border-pidgey-muted' : 'border-dotted border-pidgey-border'
+                                        }`}>
+                                            {stamp.art_path ? (
+                                                <img src={stamp.art_path} className="w-full h-full object-contain p-1" />
+                                            ) : (
+                                                <AlertTriangle size={14} className="text-yellow-500" />
+                                            )}
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <h4 className="font-bold text-sm truncate">{stamp.name}</h4>
+                                            <p className="text-[10px] text-pidgey-muted uppercase">{stamp.rarity}</p>
+                                        </div>
                                     </div>
-                                    <div className="flex-1 min-w-0">
-                                        <h4 className="font-bold text-sm truncate">{stamp.name}</h4>
-                                        <p className="text-[10px] text-pidgey-muted uppercase">{stamp.rarity}</p>
-                                    </div>
-                                </div>
-                            ))
+                                ))}
+                            </>
                         ) : (
                             // Template List
                             [
