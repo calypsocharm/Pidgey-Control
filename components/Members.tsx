@@ -57,7 +57,8 @@ export const Members = () => {
         if (!newMember.email || !newMember.full_name) return alert("Email and Name required");
         const { data, error } = await AdminService.profiles.create(newMember);
         if (error) {
-            alert("Failed to create member");
+            // Display detailed error to help debugging
+            alert(`Failed to create member: ${error.message || JSON.stringify(error)}\n\nCheck if 'profiles' table exists in Database Settings.`);
         } else {
             setIsAddModalOpen(false);
             fetchMembers();

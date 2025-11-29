@@ -1,6 +1,5 @@
-
 import React, { useState } from 'react';
-import { Settings as SettingsIcon, Shield, CreditCard, Activity, Globe, Save, Plus, Trash2, Database, Copy, Server, CloudLightning, Check, AlertOctagon } from 'lucide-react';
+import { Settings as SettingsIcon, Shield, CreditCard, Activity, Globe, Save, Plus, Trash2, Database, Copy, Server, CloudLightning, Check, AlertOctagon, UploadCloud, RefreshCw } from 'lucide-react';
 import { PUBLIC_SCHEMA_DDL } from '../schema';
 import { AdminService } from '../services/adminService';
 
@@ -10,6 +9,9 @@ export const Settings = () => {
     // Health Diagnostic State
     const [healthData, setHealthData] = useState<any>(null);
     const [runningDiagnostics, setRunningDiagnostics] = useState(false);
+    
+    // Seeding State
+    const [isSeeding, setIsSeeding] = useState(false);
 
     // Economy State Mock
     const [bundles, setBundles] = useState([
@@ -36,6 +38,19 @@ export const Settings = () => {
     const handleCopySchema = () => {
         navigator.clipboard.writeText(PUBLIC_SCHEMA_DDL);
         alert("Schema SQL copied to clipboard! Paste this into your Supabase SQL Editor to fix missing tables.");
+    };
+    
+    const handleSeedUsers = async () => {
+        if (!confirm("This will insert mock users into your live database. Proceed?")) return;
+        setIsSeeding(true);
+        try {
+            const results = await AdminService.profiles.seedMockUsers();
+            const successCount = results.filter(r => r.success).length;
+            alert(`Seeding Complete!\nSuccessfully inserted: ${successCount}\nFailed: ${results.length - successCount}`);
+        } catch(e: any) {
+            alert("Seeding failed: " + e.message);
+        }
+        setIsSeeding(false);
     };
 
     const runDiagnostics = async () => {
@@ -200,9 +215,29 @@ export const Settings = () => {
                             </button>
                         </div>
                         
-                        <div className="flex-1 bg-black/50 border border-pidgey-border rounded-lg p-4 overflow-auto font-mono text-xs text-blue-200 shadow-inner">
+                        <div className="flex-1 bg-black/50 border border-pidgey-border rounded-lg p-4 overflow-auto font-mono text-xs text-blue-200 shadow-inner mb-6 max-h-[400px]">
                             <pre>{PUBLIC_SCHEMA_DDL}</pre>
                         </div>
+
+                         <div className="pt-6 border-t border-pidgey-border">
+                            <h3 className="font-bold text-white mb-2 flex items-center gap-2">
+                                <Server size={18} /> Database Seeding
+                            </h3>
+                            <div className="bg-pidgey-dark p-4 rounded-lg border border-pidgey-border flex justify-between items-center">
+                                <div>
+                                    <p className="text-sm font-bold">Populate Mock Users</p>
+                                    <p className="text-xs text-pidgey-muted">Inserts the mock profiles (Alice, Hatter, Queen) into the 'profiles' table.</p>
+                                </div>
+                                <button 
+                                    onClick={handleSeedUsers}
+                                    disabled={isSeeding}
+                                    className="px-4 py-2 bg-pidgey-secondary/20 text-pidgey-secondary border border-pidgey-secondary/50 font-bold rounded-lg hover:bg-pidgey-secondary hover:text-white transition flex items-center gap-2"
+                                >
+                                    {isSeeding ? <RefreshCw className="animate-spin" size={16} /> : <UploadCloud size={16} />}
+                                    {isSeeding ? 'Seeding...' : 'Seed Mock Users'}
+                                </button>
+                            </div>
+                         </div>
                     </div>
                 )}
 

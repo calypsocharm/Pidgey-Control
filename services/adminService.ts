@@ -1,7 +1,22 @@
 
 import { supabase } from './supabaseClient';
 import { Profile, Drop, Ticket, DropStatus, Broadcast, Promo, Asset, AssetType, DeliveryJourney, DeliveryStatus, BroadcastChannel, Transaction, Role, Tier, Stamp } from '../types';
-import { MOCK_BROADCASTS, MOCK_PROMOS, MOCK_ASSETS, MOCK_DELIVERIES, MOCK_FLIGHT_PATHS } from '../constants';
+import { MOCK_BROADCASTS, MOCK_PROMOS, MOCK_ASSETS, MOCK_DELIVERIES, MOCK_FLIGHT_PATHS, MOCK_PROFILES } from '../constants';
+
+// Helper for ID generation that works in all contexts (including non-secure HTTP)
+const safeUUID = () => {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    try {
+      return crypto.randomUUID();
+    } catch (e) {
+      // Fallback if crypto.randomUUID fails (e.g. insecure context)
+    }
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+};
 
 /**
  * Generic response type for list operations
@@ -153,8 +168,9 @@ export const AdminService = {
     },
 
     create: async (profileData: Partial<Profile>) => {
+        // Use safeUUID to prevent crashes in insecure contexts
         const payload = {
-            id: `usr_${crypto.randomUUID()}`,
+            id: `usr_${safeUUID()}`,
             role: Role.USER,
             tier: Tier.FREE,
             egg_balance: { standard: 3, premium: 0, mystery: 0 },
@@ -164,7 +180,22 @@ export const AdminService = {
             ...profileData
         };
         const { data, error } = await supabase.from('profiles').insert(payload).select().single();
+        if (error) {
+            console.error("Failed to create profile:", error);
+        }
         return { data: data as Profile, error };
+    },
+
+    // Seed the database with mock users for testing
+    seedMockUsers: async () => {
+         let results = [];
+         console.log("Seeding mock users...");
+         for(const p of MOCK_PROFILES) {
+             const payload = { ...p, created_at: new Date().toISOString() };
+             const { error } = await supabase.from('profiles').upsert(payload, { onConflict: 'id' });
+             results.push({ name: p.full_name, success: !error, error });
+         }
+         return results;
     },
 
     update: async (id: string, updates: Partial<Profile>) => {
