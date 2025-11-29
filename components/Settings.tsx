@@ -1,9 +1,15 @@
 
 import React, { useState } from 'react';
-import { Settings as SettingsIcon, Shield, CreditCard, Activity, Globe, Save, Plus, Trash2 } from 'lucide-react';
+import { Settings as SettingsIcon, Shield, CreditCard, Activity, Globe, Save, Plus, Trash2, Database, Copy, Server, CloudLightning, Check, AlertOctagon } from 'lucide-react';
+import { PUBLIC_SCHEMA_DDL } from '../schema';
+import { AdminService } from '../services/adminService';
 
 export const Settings = () => {
     const [activeTab, setActiveTab] = useState('general');
+
+    // Health Diagnostic State
+    const [healthData, setHealthData] = useState<any>(null);
+    const [runningDiagnostics, setRunningDiagnostics] = useState(false);
 
     // Economy State Mock
     const [bundles, setBundles] = useState([
@@ -27,6 +33,21 @@ export const Settings = () => {
         </button>
     );
 
+    const handleCopySchema = () => {
+        navigator.clipboard.writeText(PUBLIC_SCHEMA_DDL);
+        alert("Schema SQL copied to clipboard! Paste this into your Supabase SQL Editor to fix missing tables.");
+    };
+
+    const runDiagnostics = async () => {
+        setRunningDiagnostics(true);
+        const sys = await AdminService.health.getSystem();
+        const sb = await AdminService.health.getSupabase();
+        const smtp = await AdminService.health.getSmtp();
+        
+        setHealthData({ sys, sb, smtp });
+        setRunningDiagnostics(false);
+    };
+
     return (
         <div className="flex flex-col md:flex-row gap-8">
             {/* Sidebar Navigation */}
@@ -39,6 +60,7 @@ export const Settings = () => {
                 <TabButton id="general" label="App & Brand" icon={Globe} />
                 <TabButton id="economy" label="Game Economy" icon={CreditCard} />
                 <TabButton id="roles" label="Roles & Access" icon={Shield} />
+                <TabButton id="database" label="Database Schema" icon={Database} />
                 <TabButton id="health" label="System Health" icon={Activity} />
             </div>
 
@@ -158,6 +180,31 @@ export const Settings = () => {
                         </div>
                     </div>
                 )}
+                
+                {activeTab === 'database' && (
+                    <div className="p-8 flex flex-col h-full">
+                        <div className="flex justify-between items-start mb-6">
+                            <div>
+                                <h2 className="text-xl font-bold flex items-center gap-2">
+                                    <Database size={20} className="text-pidgey-muted" /> Schema Management
+                                </h2>
+                                <p className="text-sm text-pidgey-muted mt-1 max-w-lg">
+                                    If you are seeing "Table not found" errors, your Supabase project might be missing the required tables. Copy the SQL below and run it in your Supabase SQL Editor.
+                                </p>
+                            </div>
+                            <button 
+                                onClick={handleCopySchema}
+                                className="flex items-center gap-2 px-4 py-2 bg-pidgey-accent text-pidgey-dark font-bold rounded-lg hover:bg-teal-300 transition"
+                            >
+                                <Copy size={16} /> Copy SQL
+                            </button>
+                        </div>
+                        
+                        <div className="flex-1 bg-black/50 border border-pidgey-border rounded-lg p-4 overflow-auto font-mono text-xs text-blue-200 shadow-inner">
+                            <pre>{PUBLIC_SCHEMA_DDL}</pre>
+                        </div>
+                    </div>
+                )}
 
                 {activeTab === 'roles' && (
                      <div className="p-8 flex flex-col items-center justify-center text-pidgey-muted h-full">
@@ -167,18 +214,113 @@ export const Settings = () => {
                 )}
 
                 {activeTab === 'health' && (
-                     <div className="p-8 flex flex-col items-center justify-center text-pidgey-muted h-full">
-                        <Activity size={48} className="mb-4 opacity-20" />
-                        <p>System Health Logs coming in v1.3</p>
+                     <div className="p-8">
+                        <div className="flex justify-between items-center mb-8">
+                            <div>
+                                 <h2 className="text-xl font-bold flex items-center gap-2">
+                                    <Activity size={20} className="text-pidgey-accent" /> System Diagnostics
+                                </h2>
+                                <p className="text-sm text-pidgey-muted">Real-time connectivity and service status checks.</p>
+                            </div>
+                            <button 
+                                onClick={runDiagnostics} 
+                                disabled={runningDiagnostics}
+                                className="px-4 py-2 bg-pidgey-dark border border-pidgey-border hover:bg-pidgey-panel rounded-lg text-sm font-bold flex items-center gap-2"
+                            >
+                                <Activity size={16} className={runningDiagnostics ? "animate-spin" : ""} />
+                                {runningDiagnostics ? 'Running...' : 'Run Diagnostics'}
+                            </button>
+                        </div>
+
+                        {!healthData ? (
+                             <div className="flex flex-col items-center justify-center h-64 text-pidgey-muted border-2 border-dashed border-pidgey-border rounded-xl">
+                                <Server size={48} className="mb-4 opacity-20" />
+                                <p>Run diagnostics to check system health.</p>
+                            </div>
+                        ) : (
+                            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
+                                {/* Supabase Card */}
+                                <div className="bg-pidgey-dark border border-pidgey-border rounded-xl p-6">
+                                    <div className="flex items-center gap-3 mb-4">
+                                        <Database className="text-green-400" size={24} />
+                                        <div>
+                                            <h3 className="font-bold text-lg">Supabase Services</h3>
+                                            <p className="text-xs text-pidgey-muted">Database & Storage Engine</p>
+                                        </div>
+                                        <div className="ml-auto text-right">
+                                             <div className="text-2xl font-mono font-bold text-white">{healthData.sb.latency_ms}ms</div>
+                                             <div className="text-[10px] text-pidgey-muted uppercase">Latency</div>
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="bg-pidgey-panel p-3 rounded-lg flex justify-between items-center">
+                                            <span className="text-sm font-medium">Postgres DB</span>
+                                            {healthData.sb.dbStatus === 'connected' ? (
+                                                <span className="text-xs bg-green-500/20 text-green-400 px-2 py-0.5 rounded font-bold uppercase flex items-center gap-1"><Check size={12}/> Connected</span>
+                                            ) : (
+                                                <span className="text-xs bg-red-500/20 text-red-400 px-2 py-0.5 rounded font-bold uppercase flex items-center gap-1"><AlertOctagon size={12}/> Error</span>
+                                            )}
+                                        </div>
+                                        <div className="bg-pidgey-panel p-3 rounded-lg flex justify-between items-center">
+                                             <span className="text-sm font-medium">Storage Buckets</span>
+                                             {healthData.sb.storageStatus === 'active' ? (
+                                                <span className="text-xs bg-green-500/20 text-green-400 px-2 py-0.5 rounded font-bold uppercase flex items-center gap-1"><Check size={12}/> Active</span>
+                                            ) : (
+                                                <span className="text-xs bg-red-500/20 text-red-400 px-2 py-0.5 rounded font-bold uppercase flex items-center gap-1"><AlertOctagon size={12}/> Error</span>
+                                            )}
+                                        </div>
+                                    </div>
+                                    {healthData.sb.error && (
+                                        <div className="mt-4 p-3 bg-red-900/20 border border-red-500/20 rounded text-xs text-red-300 font-mono">
+                                            Error: {healthData.sb.error}
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* SMTP Card */}
+                                <div className="bg-pidgey-dark border border-pidgey-border rounded-xl p-6">
+                                    <div className="flex items-center gap-3 mb-4">
+                                        <CloudLightning className="text-yellow-400" size={24} />
+                                        <div>
+                                            <h3 className="font-bold text-lg">Email Relay</h3>
+                                            <p className="text-xs text-pidgey-muted">SMTP2GO Provider Status</p>
+                                        </div>
+                                    </div>
+                                     <div className="grid grid-cols-2 gap-4">
+                                        <div className="bg-pidgey-panel p-3 rounded-lg flex justify-between items-center">
+                                            <span className="text-sm font-medium">API Key Config</span>
+                                            {healthData.smtp.keyPresent ? (
+                                                <span className="text-xs bg-green-500/20 text-green-400 px-2 py-0.5 rounded font-bold uppercase flex items-center gap-1"><Check size={12}/> Present</span>
+                                            ) : (
+                                                <span className="text-xs bg-orange-500/20 text-orange-400 px-2 py-0.5 rounded font-bold uppercase flex items-center gap-1"><AlertOctagon size={12}/> Missing</span>
+                                            )}
+                                        </div>
+                                        <div className="bg-pidgey-panel p-3 rounded-lg flex justify-between items-center">
+                                             <span className="text-sm font-medium">Relay Status</span>
+                                             <span className="text-xs bg-slate-700 text-slate-300 px-2 py-0.5 rounded font-bold uppercase">{healthData.smtp.relayStatus}</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Version Footer */}
+                                 <div className="text-center pt-4">
+                                    <span className="text-xs text-pidgey-muted font-mono">
+                                        System Version: {healthData.sys.version} • Environment: {healthData.sys.environment}
+                                    </span>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 )}
 
                 {/* Footer Save Action */}
-                <div className="p-6 border-t border-pidgey-border bg-pidgey-dark/30 flex justify-end">
-                    <button className="flex items-center gap-2 px-6 py-2 bg-pidgey-accent text-pidgey-dark font-bold rounded-lg hover:bg-teal-300 transition">
-                        <Save size={18} /> Save Changes
-                    </button>
-                </div>
+                {activeTab !== 'database' && activeTab !== 'health' && (
+                    <div className="p-6 border-t border-pidgey-border bg-pidgey-dark/30 flex justify-end">
+                        <button className="flex items-center gap-2 px-6 py-2 bg-pidgey-accent text-pidgey-dark font-bold rounded-lg hover:bg-teal-300 transition">
+                            <Save size={18} /> Save Changes
+                        </button>
+                    </div>
+                )}
             </div>
         </div>
     );

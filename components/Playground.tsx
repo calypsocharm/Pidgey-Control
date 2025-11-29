@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Image as ImageIcon, Sparkles, Upload, Save, Loader, AlertTriangle, RefreshCw, Palette, LayoutTemplate, Plus, Type, Move, AlignLeft, AlignCenter, AlignRight, ArrowUp, ArrowDown } from 'lucide-react';
 import { AdminService } from '../services/adminService';
@@ -313,11 +314,11 @@ export const Playground = () => {
                             
                             <div className={`relative overflow-hidden bg-white group transition-all duration-500 ${
                                 mode === 'stamps' 
-                                ? 'w-[300px] h-[400px] rounded-lg border-[8px] border-dotted border-pidgey-border/50 bg-pidgey-panel shadow-inner p-4' // Stamp Style Oblong
-                                : 'w-[300px] h-[400px] rounded-lg shadow-2xl' // Template Style Oblong
+                                ? 'w-[300px] h-[400px] rounded-lg border-[6px] border-dotted border-pidgey-border/50 bg-pidgey-panel shadow-inner p-4' // STAMP: Oblong with dotted border
+                                : 'w-[300px] h-[400px] rounded-lg shadow-2xl' // TEMPLATE: Oblong
                             }`}>
                                 {previewUrl ? (
-                                    <img src={previewUrl} className={`w-full h-full object-cover ${mode === 'stamps' ? 'p-2' : ''}`} />
+                                    <img src={previewUrl} className={`w-full h-full object-cover ${mode === 'stamps' ? 'p-2 object-contain' : ''}`} />
                                 ) : (
                                     <div className="w-full h-full flex flex-col items-center justify-center text-slate-400 bg-slate-100">
                                         <ImageIcon size={48} className="mx-auto mb-2 opacity-50" />

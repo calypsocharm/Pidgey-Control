@@ -1,6 +1,6 @@
 
-import React, { useState, useEffect } from 'react';
-import { Egg, Sparkles, Plus, Edit, Trash2, X, Save, Calendar, Loader, Image as ImageIcon, AlertTriangle } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Egg, Sparkles, Plus, Edit, Trash2, X, Save, Calendar, Loader, Image as ImageIcon, AlertTriangle, Upload } from 'lucide-react';
 import { AdminService } from '../services/adminService';
 import { Drop, DropStatus, Stamp, StampRarity, StampStatus } from '../types';
 import { MOCK_STAMPS } from '../constants'; // Fallback for stamps if API fails
@@ -16,6 +16,10 @@ export const Drops = () => {
     
     // Stamp Builder State (Stamps inside the current drop)
     const [dropStamps, setDropStamps] = useState<Partial<Stamp>[]>([]);
+    
+    // Upload State for Builder
+    const [uploadingSlot, setUploadingSlot] = useState<number | null>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null);
     
     // Context for Pidgey's Drafts
     const { draftPayload, setDraftPayload } = useJarvis();
@@ -99,7 +103,7 @@ export const Drops = () => {
         }
 
         if (res.error) {
-            alert("Error saving drop: " + res.error.message);
+            alert("Error saving drop: " + res.error.message + "\n\nTip: Go to Settings > Database to create the missing tables if this is a new setup.");
         } else {
             setIsModalOpen(false);
             fetchDrops();
@@ -129,6 +133,36 @@ export const Drops = () => {
         const newStamps = [...dropStamps];
         newStamps[index] = { ...newStamps[index], [field]: value };
         setDropStamps(newStamps);
+    };
+
+    const triggerUpload = (index: number) => {
+        setUploadingSlot(index);
+        fileInputRef.current?.click();
+    };
+
+    const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file || uploadingSlot === null) return;
+
+        // Optimistic UI
+        const newStamps = [...dropStamps];
+        
+        const { data, error } = await AdminService.files.upload(file, 'stamps');
+        
+        if (data) {
+             newStamps[uploadingSlot] = { 
+                 ...newStamps[uploadingSlot], 
+                 art_path: data.url,
+                 // Auto-fill name if empty
+                 name: newStamps[uploadingSlot].name || file.name.split('.')[0]
+             };
+             setDropStamps(newStamps);
+        } else {
+            alert("Upload failed: " + error.message);
+        }
+        
+        setUploadingSlot(null);
+        if (fileInputRef.current) fileInputRef.current.value = '';
     };
 
     const getRarityColor = (rarity: StampRarity | undefined) => {
@@ -229,9 +263,9 @@ export const Drops = () => {
                 </div>
                 <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
                     {MOCK_STAMPS.map(stamp => (
-                        <div key={stamp.id} className="bg-pidgey-panel border border-pidgey-border rounded-lg p-3 text-center hover:-translate-y-1 transition-transform cursor-pointer">
-                            <div className="w-full aspect-square rounded bg-pidgey-dark mb-3 overflow-hidden flex items-center justify-center">
-                                <img src={stamp.art_path} alt={stamp.name} className="w-full h-full object-cover" />
+                        <div key={stamp.id} className="bg-pidgey-panel border-4 border-dotted border-pidgey-border rounded-lg p-3 text-center hover:-translate-y-1 transition-transform cursor-pointer">
+                            <div className="w-full aspect-[3/4] rounded bg-pidgey-dark mb-3 overflow-hidden flex items-center justify-center p-2">
+                                <img src={stamp.art_path} alt={stamp.name} className="w-full h-full object-contain" />
                             </div>
                             <p className="font-medium text-sm truncate">{stamp.name}</p>
                             <span className={`text-[10px] px-2 py-0.5 rounded-full mt-2 inline-block font-bold uppercase ${
@@ -370,6 +404,15 @@ export const Drops = () => {
                                         <Plus size={14} /> Add Template Slot
                                     </button>
                                 </div>
+                                
+                                {/* Hidden Input for Uploads */}
+                                <input 
+                                    type="file" 
+                                    ref={fileInputRef} 
+                                    className="hidden" 
+                                    accept="image/png, image/jpeg"
+                                    onChange={handleFileChange}
+                                />
 
                                 {dropStamps.length === 0 ? (
                                     <div className="border-2 border-dashed border-pidgey-border rounded-xl h-64 flex flex-col items-center justify-center text-pidgey-muted gap-2">
@@ -380,27 +423,41 @@ export const Drops = () => {
                                 ) : (
                                     <div className="grid grid-cols-2 xl:grid-cols-3 gap-4">
                                         {dropStamps.map((stamp, idx) => (
-                                            <div key={idx} className={`bg-pidgey-dark border-2 rounded-xl p-4 relative group transition-colors ${getRarityColor(stamp.rarity)}`}>
+                                            <div key={idx} className={`bg-pidgey-dark border-4 border-dotted rounded-xl p-4 relative group transition-colors ${getRarityColor(stamp.rarity)}`}>
                                                 
                                                 {/* Remove Button */}
                                                 <button onClick={() => removeStampSlot(idx)} className="absolute top-2 right-2 p-1.5 bg-pidgey-panel hover:bg-red-500/20 hover:text-red-400 rounded-full text-pidgey-muted transition opacity-0 group-hover:opacity-100 z-10">
                                                     <X size={14} />
                                                 </button>
 
-                                                {/* Art Placeholder */}
-                                                <div className="aspect-square bg-pidgey-panel rounded-lg mb-3 flex items-center justify-center relative overflow-hidden group/image">
+                                                {/* Art Placeholder - Oblong 3:4 */}
+                                                <div 
+                                                    onClick={() => triggerUpload(idx)}
+                                                    className="aspect-[3/4] bg-pidgey-panel rounded-lg mb-3 flex items-center justify-center relative overflow-hidden group/image cursor-pointer hover:bg-pidgey-border transition-colors border border-transparent hover:border-pidgey-accent"
+                                                >
                                                     {stamp.art_path ? (
-                                                        <img src={stamp.art_path} className="w-full h-full object-cover" />
+                                                        <img src={stamp.art_path} className="w-full h-full object-contain p-2" />
                                                     ) : (
                                                         <div className="flex flex-col items-center text-pidgey-muted/50">
-                                                            <ImageIcon size={32} />
-                                                            <span className="text-[10px] uppercase font-bold mt-1">Empty Template</span>
+                                                            <Upload size={32} />
+                                                            <span className="text-[10px] uppercase font-bold mt-1 text-center">Click to Upload</span>
                                                         </div>
                                                     )}
+                                                    
                                                     {/* Upload Overlay */}
-                                                    <div className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 group-hover/image:opacity-100 transition-opacity cursor-pointer">
-                                                        <span className="text-xs font-bold text-white border border-white/50 px-2 py-1 rounded">Upload Art</span>
-                                                    </div>
+                                                    {stamp.art_path && (
+                                                        <div className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 group-hover/image:opacity-100 transition-opacity">
+                                                            <span className="text-xs font-bold text-white border border-white/50 px-2 py-1 rounded flex items-center gap-2">
+                                                                <Edit size={12}/> Change Art
+                                                            </span>
+                                                        </div>
+                                                    )}
+                                                    
+                                                    {uploadingSlot === idx && (
+                                                        <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
+                                                            <Loader className="animate-spin text-white" />
+                                                        </div>
+                                                    )}
                                                 </div>
 
                                                 {/* Controls */}
@@ -435,7 +492,7 @@ export const Drops = () => {
                                         
                                         {/* Quick Add Button at end of grid */}
                                         {dropStamps.length < 10 && (
-                                            <button onClick={addStampSlot} className="border-2 border-dashed border-pidgey-border rounded-xl flex flex-col items-center justify-center text-pidgey-muted hover:border-pidgey-accent hover:text-pidgey-accent transition-colors min-h-[250px]">
+                                            <button onClick={addStampSlot} className="border-4 border-dashed border-pidgey-border rounded-xl flex flex-col items-center justify-center text-pidgey-muted hover:border-pidgey-accent hover:text-pidgey-accent transition-colors min-h-[300px]">
                                                 <Plus size={24} />
                                                 <span className="text-xs font-bold mt-2">Add Slot</span>
                                             </button>

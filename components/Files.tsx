@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { FolderOpen, Image as ImageIcon, FileText, Grid, List, Download, Trash2, Search, Upload, Sparkles, Loader, Plus, X, Save, Tag, RefreshCw, AlertTriangle, Database, Terminal } from 'lucide-react';
 import { AdminService } from '../services/adminService';
@@ -10,7 +11,8 @@ const FileCard: React.FC<{ file: Asset, onAutoTag: (file: Asset) => void, isTagg
     const [imgError, setImgError] = useState(false);
 
     return (
-        <div className={`group bg-pidgey-panel border ${isStamp ? 'border-4 border-dotted border-pidgey-border' : 'border-pidgey-border'} rounded-xl overflow-hidden hover:border-pidgey-muted transition-colors relative`}>
+        <div className={`group bg-pidgey-panel ${isStamp ? 'border-4 border-dotted border-pidgey-border' : 'border border-pidgey-border'} rounded-xl overflow-hidden hover:border-pidgey-muted transition-colors relative`}>
+            {/* Standardized Aspect Ratio [3/4] for all items (oblong) */}
             <div className="aspect-[3/4] bg-pidgey-dark relative overflow-hidden flex items-center justify-center p-4">
                 {file.type === AssetType.IMAGE || file.type === AssetType.STAMP_ART || file.type === AssetType.ICON || file.type === AssetType.CARD_TEMPLATE ? (
                     imgError ? (
@@ -22,15 +24,16 @@ const FileCard: React.FC<{ file: Asset, onAutoTag: (file: Asset) => void, isTagg
                         <img 
                             src={file.url} 
                             alt={file.name} 
-                            className="w-full h-full object-contain" 
+                            className="w-full h-full object-contain transition-transform group-hover:scale-105" 
                             onError={() => setImgError(true)}
                         />
                     )
                 ) : (
                     <FileText size={48} className="text-pidgey-muted opacity-20" />
                 )}
+                
                 {/* Overlay */}
-                <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-wrap items-center justify-center gap-2 p-2">
+                <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-wrap items-center justify-center gap-2 p-2 content-center">
                     {/* Auto Tag */}
                     <button 
                         onClick={() => onAutoTag(file)}
@@ -41,7 +44,7 @@ const FileCard: React.FC<{ file: Asset, onAutoTag: (file: Asset) => void, isTagg
                         <Sparkles size={18} className={isTagging ? 'animate-spin' : ''} />
                     </button>
                     
-                    {/* Create Entity Shortcut (Previously "Use Art") */}
+                    {/* Create Entity Shortcut */}
                     {onSelect && !imgError && (
                         <button 
                             onClick={() => onSelect(file)}
@@ -67,7 +70,8 @@ const FileCard: React.FC<{ file: Asset, onAutoTag: (file: Asset) => void, isTagg
                     </button>
                 </div>
             </div>
-            <div className="p-3 border-t border-pidgey-border">
+            
+            <div className="p-3 border-t border-pidgey-border bg-pidgey-panel relative z-10">
                 <div className="flex justify-between items-start">
                     <h4 className="font-bold text-sm truncate w-3/4" title={file.name}>{file.name}</h4>
                     <span className="text-[10px] text-pidgey-muted uppercase font-bold">{file.type.split('_').pop()}</span>
@@ -447,11 +451,11 @@ export const Files = () => {
                                 />
                                 <div 
                                     onClick={() => stampFileInputRef.current?.click()}
-                                    className="w-32 h-32 bg-pidgey-dark rounded-lg border border-pidgey-border flex items-center justify-center overflow-hidden cursor-pointer hover:border-pidgey-accent group relative"
+                                    className="w-32 h-44 bg-pidgey-dark rounded-lg border-4 border-dotted border-pidgey-border flex items-center justify-center overflow-hidden cursor-pointer hover:border-pidgey-accent group relative"
                                 >
                                     {newStamp.art_path ? (
                                         <>
-                                            <img src={newStamp.art_path} className="w-full h-full object-contain" />
+                                            <img src={newStamp.art_path} className="w-full h-full object-contain p-2" />
                                             <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                                                 <Upload size={20} className="text-white" />
                                             </div>

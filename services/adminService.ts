@@ -1,3 +1,4 @@
+
 import { supabase } from './supabaseClient';
 import { Profile, Drop, Ticket, DropStatus, Broadcast, Promo, Asset, AssetType, DeliveryJourney, DeliveryStatus, BroadcastChannel, Transaction, Role, Tier, Stamp } from '../types';
 import { MOCK_BROADCASTS, MOCK_PROMOS, MOCK_ASSETS, MOCK_DELIVERIES, MOCK_FLIGHT_PATHS } from '../constants';
@@ -510,6 +511,60 @@ export const AdminService = {
             console.error("Pidgey Context Error", e);
             return { error: "Failed to fetch real context" };
         }
+      }
+  },
+
+  // --- System Health (Virtual Backend Endpoints) ---
+  health: {
+      getSystem: async () => {
+          return {
+              version: 'v1.3.0',
+              status: 'operational',
+              timestamp: new Date().toISOString(),
+              environment: process.env.NODE_ENV || 'development'
+          };
+      },
+      
+      getSupabase: async () => {
+          const t0 = performance.now();
+          let dbStatus = 'disconnected';
+          let storageStatus = 'disconnected';
+          let error = null;
+          
+          try {
+              // Lightweight DB Check
+              const { error: dbErr } = await supabase.from('profiles').select('count', { count: 'exact', head: true });
+              if (dbErr) throw dbErr;
+              dbStatus = 'connected';
+              
+              // Lightweight Storage Check
+              // listBuckets is safer for admin role.
+              const { data: buckets, error: listErr } = await supabase.storage.listBuckets();
+              if (listErr) throw listErr;
+              storageStatus = 'active';
+              
+          } catch (e: any) {
+              error = e.message;
+          }
+          
+          return {
+              dbStatus,
+              storageStatus,
+              latency_ms: Math.round(performance.now() - t0),
+              error
+          };
+      },
+      
+      getSmtp: async () => {
+          // Check locally stored config as proxy for "backend config"
+          const key = localStorage.getItem('smtp2go_key');
+          // Mock ping based on config presence
+          const isHealthy = !!key; 
+          return {
+              keyPresent: !!key,
+              relayStatus: isHealthy ? 'active' : 'configured_required',
+              provider: 'SMTP2GO'
+          };
       }
   },
 
