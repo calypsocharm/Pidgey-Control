@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Megaphone, Calendar, Send, Mail, Smartphone, Bell, Plus, RefreshCw, BarChart2, X, Save, Clock, Users } from 'lucide-react';
+import { Megaphone, Calendar, Send, Mail, Smartphone, Bell, Plus, RefreshCw, BarChart2, X, Save, Clock, Users, History, Undo2 } from 'lucide-react';
 import { AdminService } from '../services/adminService';
 import { Broadcast, BroadcastStatus, BroadcastChannel } from '../types';
 
@@ -36,6 +36,11 @@ export const Broadcasts = () => {
         setIsModalOpen(true);
     };
 
+    const handleEditBroadcast = (bc: Broadcast) => {
+        setCurrentBroadcast({ ...bc });
+        setIsModalOpen(true);
+    };
+
     const handleSave = async () => {
         if (!currentBroadcast.name || !currentBroadcast.subject) return alert("Name and Subject required");
 
@@ -47,6 +52,28 @@ export const Broadcasts = () => {
             // Optimistically update list
             if (data) setBroadcasts(prev => [data, ...prev]);
             setIsModalOpen(false);
+        }
+    };
+
+    const handleRevertToDraft = () => {
+        if (!currentBroadcast.id) return;
+        
+        const isSent = currentBroadcast.status === BroadcastStatus.SENT;
+        const msg = isSent 
+            ? "This will CLONE the sent broadcast into a new DRAFT. Proceed?" 
+            : "Revert this SCHEDULED broadcast to DRAFT? It will stop sending.";
+            
+        if (!confirm(msg)) return;
+
+        if (isSent) {
+            // Clone Logic
+            const clone = { ...currentBroadcast, id: undefined, status: BroadcastStatus.DRAFT, name: `${currentBroadcast.name} (Clone)` };
+            setCurrentBroadcast(clone);
+            alert("Cloned to Draft mode. You can now edit and save as new.");
+        } else {
+            // Revert Logic
+            setCurrentBroadcast({ ...currentBroadcast, status: BroadcastStatus.DRAFT, scheduled_at: undefined });
+            alert("Reverted to Draft. Status updated.");
         }
     };
 
@@ -153,7 +180,7 @@ export const Broadcasts = () => {
                         </thead>
                         <tbody className="divide-y divide-pidgey-border">
                             {broadcasts.map(bc => (
-                                <tr key={bc.id} className="hover:bg-pidgey-dark/30 group cursor-pointer">
+                                <tr key={bc.id} onClick={() => handleEditBroadcast(bc)} className="hover:bg-pidgey-dark/30 group cursor-pointer transition-colors">
                                     <td className="px-6 py-4">
                                         <div className="font-bold">{bc.name}</div>
                                         <div className="text-xs text-pidgey-muted">{bc.subject}</div>
@@ -206,7 +233,7 @@ export const Broadcasts = () => {
                             <div>
                                 <h2 className="text-xl font-bold flex items-center gap-2">
                                     <Megaphone size={20} className="text-pidgey-secondary" />
-                                    New Broadcast
+                                    {currentBroadcast.id ? 'Edit Broadcast' : 'New Broadcast'}
                                 </h2>
                                 <p className="text-xs text-pidgey-muted">Create a new message blast to your users.</p>
                             </div>
@@ -284,6 +311,26 @@ export const Broadcasts = () => {
                                 </div>
                                 <p className="text-[10px] text-pidgey-muted mt-1">Leave blank to save as Draft.</p>
                             </div>
+
+                            {/* History / Rollback Panel */}
+                            {currentBroadcast.id && currentBroadcast.status !== BroadcastStatus.DRAFT && (
+                                <div className="p-4 bg-pidgey-dark border border-pidgey-border rounded-lg">
+                                    <div className="flex items-center gap-2 mb-2 text-white font-bold text-xs uppercase">
+                                        <History size={14} className="text-pidgey-muted" /> Archive Log
+                                    </div>
+                                    <div className="flex justify-between items-center">
+                                        <div className="text-xs text-pidgey-muted">
+                                            Status: <span className="text-white font-bold">{currentBroadcast.status}</span>
+                                        </div>
+                                        <button 
+                                            onClick={handleRevertToDraft}
+                                            className="px-3 py-1.5 bg-orange-500/10 text-orange-400 border border-orange-500/20 rounded hover:bg-orange-500/20 text-xs font-bold flex items-center gap-1"
+                                        >
+                                            <Undo2 size={12} /> {currentBroadcast.status === BroadcastStatus.SENT ? 'Clone to Draft' : 'Revert to Draft'}
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
 
                             <div className="pt-4 border-t border-pidgey-border flex justify-end gap-3">
                                 <button onClick={() => setIsModalOpen(false)} className="px-4 py-2 text-sm font-bold text-pidgey-muted hover:text-white transition">Cancel</button>

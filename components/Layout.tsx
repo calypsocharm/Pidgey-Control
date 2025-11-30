@@ -1,5 +1,6 @@
+
 import React, { useState, useEffect } from 'react';
-import { LayoutDashboard, Users, Egg, StickyNote, Mail, FolderOpen, Settings, LogOut, Search, Bell, Bird, Activity, Plane, Palette, Shield, ShieldAlert, Zap } from 'lucide-react';
+import { LayoutDashboard, Users, Egg, StickyNote, Mail, FolderOpen, Settings, LogOut, Search, Bell, Bird, Activity, Plane, Palette, Shield, ShieldAlert, Zap, Sparkles } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 import { JarvisAgent } from './JarvisAgent';
 import { useJarvis } from '../JarvisContext';
@@ -10,14 +11,14 @@ interface LayoutProps {
   children: React.ReactNode;
 }
 
-const NavItem = ({ to, icon: Icon, label }: { to: string; icon: any; label: string }) => {
+const NavItem = ({ to, icon: Icon, label, badge }: { to: string; icon: any; label: string; badge?: number }) => {
   const location = useLocation();
   const isActive = location.pathname === to || (to !== '/' && location.pathname.startsWith(to));
 
   return (
     <Link
       to={to}
-      className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
+      className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors relative ${
         isActive
           ? 'bg-pidgey-accent/20 text-pidgey-accent font-medium'
           : 'text-pidgey-muted hover:text-pidgey-text hover:bg-pidgey-panel'
@@ -25,12 +26,17 @@ const NavItem = ({ to, icon: Icon, label }: { to: string; icon: any; label: stri
     >
       <Icon size={20} />
       <span>{label}</span>
+      {badge && badge > 0 && (
+          <span className="absolute right-3 top-1/2 -translate-y-1/2 bg-pidgey-accent text-pidgey-dark text-[10px] font-bold px-1.5 py-0.5 rounded-full">
+              {badge}
+          </span>
+      )}
     </Link>
   );
 };
 
 export const Layout: React.FC<LayoutProps> = ({ children }) => {
-  const { openPidgey, isOpen, mood } = useJarvis();
+  const { openPidgey, isOpen, mood, creations } = useJarvis();
   const { logout } = useAuth();
   const { isSafeMode, toggleSafeMode } = useSafeMode();
   
@@ -76,6 +82,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
           <div className="text-xs font-semibold text-pidgey-muted uppercase tracking-wider mb-2 mt-6 px-4">
             Operations
           </div>
+          <NavItem to="/creations" icon={Sparkles} label="Pidgey Creations" badge={creations.length} />
           <NavItem to="/flight-path" icon={Plane} label="Flight Path" />
           <NavItem to="/support" icon={Mail} label="Support" />
           <NavItem to="/broadcasts" icon={Bell} label="Broadcasts" />

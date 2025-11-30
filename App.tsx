@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { HashRouter, Routes, Route, Link } from 'react-router-dom';
 import { 
@@ -18,6 +19,7 @@ import { Settings } from './components/Settings';
 import { Deliveries } from './components/Deliveries';
 import { FlightPath } from './components/FlightPath';
 import { Playground } from './components/Playground';
+import { PidgeyCreations } from './components/PidgeyCreations';
 import { LoginScreen } from './components/LoginScreen';
 
 import { JarvisProvider, useJarvis } from './JarvisContext';
@@ -165,6 +167,7 @@ const AppContent = () => {
                     <Route path="/broadcasts" element={<Broadcasts />} />
                     <Route path="/deliveries" element={<Deliveries />} />
                     <Route path="/flight-path" element={<FlightPath />} />
+                    <Route path="/creations" element={<PidgeyCreations />} />
                     <Route path="/promos" element={<Promos />} />
                     <Route path="/files" element={<Files />} />
                     <Route path="/settings" element={<Settings />} />

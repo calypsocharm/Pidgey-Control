@@ -35,14 +35,18 @@ export enum DropStatus {
 }
 
 export enum StampRarity {
-  COMMON = 'Common',
-  RARE = 'Rare',
-  LEGENDARY = 'Legendary',
-  PIDGEY = 'Pidgey',
+  COMMON = 'common',
+  RARE = 'rare',
+  FOIL = 'foil',
+  LEGENDARY = 'legendary',
+  PIDGEY = 'pidgey',
+  ULTIMATE = 'snake_scale',
 }
 
 export enum StampStatus {
-  ACTIVE = 'active',
+  DRAFT = 'draft',      // Newly created in Playground, missing metadata
+  READY = 'ready',      // Metadata complete, ready to be added to a drop
+  ACTIVE = 'active',    // Live in a drop or store
   ARCHIVED = 'archived',
   TEST = 'test',
 }
@@ -239,9 +243,11 @@ export interface Stamp {
   collection?: string;
   artist_id?: string;
   price_eggs?: number;
+  edition_count?: number; // Total supply
   is_drop_only?: boolean;
   art_path: string;
   created_at?: string;
+  design_config?: any; // JSONB for Playground settings
 }
 
 export interface Drop {
@@ -305,8 +311,15 @@ export interface ChatMessage {
     role: 'user' | 'assistant';
     content: string;
     timestamp: Date;
-    action?: {
-        type: 'DRAFT_DROP' | 'DRAFT_STAMP' | 'DRAFT_PROMO' | 'MIGRATE_DATA';
-        payload: any;
-    }
+    action?: any; // Generic action payload
+}
+
+// Pidgey Creations (Drafts)
+export interface CreationDraft {
+  id: string;
+  type: 'drop' | 'broadcast' | 'promo' | 'stamp' | 'member';
+  data: any;
+  created_at: string;
+  status: 'pending' | 'approved' | 'rejected';
+  summary: string;
 }

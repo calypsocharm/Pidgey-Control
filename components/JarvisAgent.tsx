@@ -1,14 +1,15 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Send, Bird, Sparkles, RefreshCw, CheckCircle2, ArrowRight, ExternalLink } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { getPidgeyDailyBrief, chatWithPidgey } from '../services/geminiService';
-import { ChatMessage } from '../types';
+import { getPidgeyDailyBrief, chatWithPidgey, generateImageAsset } from '../services/geminiService';
+import { ChatMessage, CreationDraft } from '../types';
 import { useJarvis } from '../JarvisContext';
 import { PUBLIC_SCHEMA_DDL } from '../schema';
 import { AdminService } from '../services/adminService';
 
 export const JarvisAgent: React.FC = () => {
-    const { isOpen, closePidgey, initialMessage, clearMessage, mood, setMood, setDraftPayload, memories, learn } = useJarvis();
+    const { isOpen, closePidgey, initialMessage, clearMessage, mood, setMood, memories, learn, addCreation } = useJarvis();
     const [activeTab, setActiveTab] = useState<'today' | 'chat'>('today');
     const [brief, setBrief] = useState<string>('');
     const [isLoadingBrief, setIsLoadingBrief] = useState(false);
@@ -97,16 +98,65 @@ export const JarvisAgent: React.FC = () => {
         }
         responseText = responseText.replace(learnRegex, '').trim();
 
-        // 2. Parse Actions (Drafts)
-        const actionRegex = /\$\$ACTION:(.*?):(.*?)\$\$/;
+        // 2. Parse Actions (Listener Implementation)
+        const actionRegex = /\$\$ACTION:SAVE_DRAFT:(.*?)\$\$/;
         const actionMatch = responseText.match(actionRegex);
         
-        let actionData = null;
+        let createdDraft: CreationDraft | null = null;
+
         if (actionMatch) {
             try {
-                const actionType = actionMatch[1] as any;
-                const actionPayload = JSON.parse(actionMatch[2]);
-                actionData = { type: actionType, payload: actionPayload };
+                const rawPayload = JSON.parse(actionMatch[1]);
+                
+                // --- VISUAL ASSET GENERATION FOR STAMPS ---
+                // If Pidgey drafted a stamp but didn't provide a real URL, generate one now.
+                if (rawPayload.type === 'stamp') {
+                    const hasValidArt = rawPayload.data.art_path && rawPayload.data.art_path.startsWith('http');
+                    
+                    if (!hasValidArt) {
+                        setMessages(prev => [...prev, {
+                            id: Date.now().toString() + '_art',
+                            role: 'assistant',
+                            content: `*One moment, painting the art for "${rawPayload.data.name}"...* 🎨`,
+                            timestamp: new Date()
+                        }]);
+
+                        const visualPrompt = `Iconic stamp art for "${rawPayload.data.name}", ${rawPayload.data.rarity || 'common'} rarity, vector style, white background, centered`;
+                        
+                        try {
+                            const base64Art = await generateImageAsset(visualPrompt);
+                            if (base64Art) {
+                                const { data: uploadData, error: uploadError } = await AdminService.files.uploadBase64(base64Art, 'stamps');
+                                if (uploadData && uploadData.url) {
+                                    rawPayload.data.art_path = uploadData.url;
+                                } else {
+                                    console.error("Art upload failed:", uploadError);
+                                    rawPayload.data.art_path = 'https://picsum.photos/seed/pidgey_upload_fail/300/400';
+                                }
+                            } else {
+                                rawPayload.data.art_path = 'https://picsum.photos/seed/pidgey_gen_fail/300/400';
+                            }
+                        } catch (e) {
+                            console.error("Art generation failed:", e);
+                            rawPayload.data.art_path = 'https://picsum.photos/seed/pidgey_error/300/400';
+                        }
+                    }
+                }
+                // ------------------------------------------
+
+                // Create draft object
+                createdDraft = {
+                    id: `draft_${Date.now()}`,
+                    type: rawPayload.type,
+                    data: rawPayload.data,
+                    summary: rawPayload.summary || `New ${rawPayload.type}`,
+                    status: 'pending',
+                    created_at: new Date().toISOString()
+                };
+
+                // Add to Centralized Repository
+                addCreation(createdDraft);
+
                 responseText = responseText.replace(actionRegex, '').trim();
             } catch (e) {
                 console.error("Failed to parse action", e);
@@ -120,7 +170,6 @@ export const JarvisAgent: React.FC = () => {
             const path = navMatch[1];
             navigate(path);
             responseText = responseText.replace(navRegex, '').trim();
-            // Optional: Add a "Navigated" confirmation to the message or separate toast
              setMessages(prev => [...prev, {
                 id: Date.now().toString() + '_nav',
                 role: 'assistant',
@@ -134,7 +183,7 @@ export const JarvisAgent: React.FC = () => {
             role: 'assistant',
             content: responseText,
             timestamp: new Date(),
-            action: actionData
+            action: createdDraft
         };
 
         setMessages(prev => [...prev, botMsg]);
@@ -142,25 +191,9 @@ export const JarvisAgent: React.FC = () => {
         setMood('idle');
     };
 
-    const handleReviewAction = (action: any) => {
-        if (action.type === 'DRAFT_DROP' || action.type === 'DRAFT_STAMP') {
-            setDraftPayload({ type: action.type, data: action.payload });
-            navigate('/drops');
-            closePidgey();
-        } else if (action.type === 'DRAFT_PROMO') {
-            setDraftPayload({ type: action.type, data: action.payload });
-            navigate('/promos');
-            closePidgey();
-        }
-    };
-
-    const getActionTitle = (action: any) => {
-        switch(action.type) {
-            case 'DRAFT_DROP': return `Drop: ${action.payload.title}`;
-            case 'DRAFT_STAMP': return `Stamp: ${action.payload.name}`;
-            case 'DRAFT_PROMO': return `Promo: ${action.payload.code}`;
-            default: return 'Draft Item';
-        }
+    const handleViewCreations = () => {
+        navigate('/creations');
+        closePidgey();
     };
 
     if (!isOpen) return null;
@@ -179,7 +212,7 @@ export const JarvisAgent: React.FC = () => {
                     </div>
                     <div>
                         <h3 className="font-bold text-white text-lg leading-none">Pidgey</h3>
-                        <span className="text-[11px] text-pidgey-muted font-medium">Ops Copilot v2.0 (Sweet & Smart)</span>
+                        <span className="text-[11px] text-pidgey-muted font-medium">Ops Copilot v3.1 (Action-Mode)</span>
                     </div>
                 </div>
                 <button onClick={closePidgey} className="p-2 hover:bg-white/5 rounded-full text-pidgey-muted hover:text-white transition-colors">
@@ -264,23 +297,32 @@ export const JarvisAgent: React.FC = () => {
                                         </div>
                                     </div>
                                     
-                                    {/* Action Card */}
+                                    {/* Creation Card (Listener Result) */}
                                     {msg.action && (
-                                        <div className="mt-2 ml-10 max-w-[85%] bg-pidgey-panel border border-pidgey-accent/50 rounded-xl p-4 shadow-lg animate-in slide-in-from-left-4 fade-in duration-500">
+                                        <div className="mt-2 ml-10 max-w-[85%] bg-gradient-to-br from-pidgey-panel to-pidgey-dark border border-pidgey-accent/50 rounded-xl p-4 shadow-lg animate-in slide-in-from-left-4 fade-in duration-500">
                                             <div className="flex items-center gap-2 mb-2 text-pidgey-accent font-bold uppercase text-xs tracking-wider">
-                                                <Sparkles size={14} /> Draft Created
+                                                <Sparkles size={14} /> Draft Saved
                                             </div>
-                                            <p className="text-sm font-bold mb-1">
-                                                {getActionTitle(msg.action)}
-                                            </p>
-                                            <p className="text-xs text-pidgey-muted mb-3">
-                                                I've prepared this for you, Boss! Ready to review?
-                                            </p>
+                                            <div className="flex items-start gap-3">
+                                                {msg.action.type === 'stamp' && msg.action.data.art_path && (
+                                                    <div className="w-16 h-20 bg-black/20 rounded-md overflow-hidden flex-shrink-0 border border-pidgey-border">
+                                                        <img src={msg.action.data.art_path} className="w-full h-full object-contain" alt="Preview" />
+                                                    </div>
+                                                )}
+                                                <div>
+                                                    <p className="text-sm font-bold mb-1 text-white capitalize">
+                                                        {msg.action.type}: {msg.action.summary}
+                                                    </p>
+                                                    <p className="text-xs text-pidgey-muted mb-3">
+                                                        I've sent this to your Creations Tab for final approval.
+                                                    </p>
+                                                </div>
+                                            </div>
                                             <button 
-                                                onClick={() => handleReviewAction(msg.action)}
+                                                onClick={handleViewCreations}
                                                 className="w-full py-2 bg-pidgey-accent text-pidgey-dark font-bold rounded-lg hover:bg-teal-300 transition flex items-center justify-center gap-2 text-sm"
                                             >
-                                                Review Now <ArrowRight size={16} />
+                                                Go to Creations Tab <ArrowRight size={16} />
                                             </button>
                                         </div>
                                     )}
@@ -309,7 +351,7 @@ export const JarvisAgent: React.FC = () => {
                                     value={input}
                                     onChange={(e) => setInput(e.target.value)}
                                     onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
-                                    placeholder="Ask me to draft a promo, check revenue, or tell a joke..."
+                                    placeholder="Ask Pidgey to create a drop, broadcast, or promo..."
                                     className="w-full bg-pidgey-dark border border-pidgey-border rounded-xl pl-4 pr-12 py-3 text-sm focus:outline-none focus:border-pidgey-accent focus:ring-1 focus:ring-pidgey-accent text-white placeholder-pidgey-muted transition-all"
                                 />
                                 <button 

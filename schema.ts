@@ -68,11 +68,13 @@ CREATE TABLE public.stamps (
   id text primary key,
   name text,
   rarity text,
-  status text,
+  status text, -- draft, ready, active, archived
   collection text,
   art_path text, -- URL to the file in storage
   price_eggs int default 0,
+  edition_count int default 0, -- Max supply for this stamp
   is_drop_only boolean default false,
+  design_config jsonb, -- Playground settings
   created_at timestamptz default now()
 );
 `;

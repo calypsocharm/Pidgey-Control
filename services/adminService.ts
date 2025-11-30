@@ -1,3 +1,4 @@
+
 import { supabase } from './supabaseClient';
 import { Profile, Drop, Ticket, DropStatus, Broadcast, Promo, Asset, AssetType, DeliveryJourney, DeliveryStatus, BroadcastChannel, Transaction, Role, Tier, Stamp } from '../types';
 import { MOCK_BROADCASTS, MOCK_PROMOS, MOCK_ASSETS, MOCK_DELIVERIES, MOCK_FLIGHT_PATHS, MOCK_PROFILES } from '../constants';
@@ -170,6 +171,50 @@ export const AdminService = {
       return { data: data as Profile, error };
     },
 
+    // Ultimate Member Profile Blueprint Aggregator
+    getCompleteProfile: async (id: string) => {
+        try {
+            const [
+                { data: profile, error: pError },
+                { data: transactions },
+                { data: logs },
+                { data: tickets },
+                { count: cardCount },
+                { data: cards }
+            ] = await Promise.all([
+                supabase.from('profiles').select('*').eq('id', id).single(),
+                supabase.from('transactions').select('*').eq('profile_id', id).order('created_at', { ascending: false }),
+                supabase.from('activity_logs').select('*').eq('user_id', id).order('created_at', { ascending: false }).limit(50),
+                supabase.from('tickets').select('*').eq('profile_id', id).order('created_at', { ascending: false }),
+                supabase.from('cards').select('*', { count: 'exact', head: true }).eq('owner_id', id),
+                supabase.from('cards').select('*').eq('owner_id', id).order('created_at', { ascending: false }).limit(20)
+            ]);
+
+            if (pError) throw pError;
+
+            // Stats Calculations
+            const lifetimeRevenue = transactions?.filter(t => t.status === 'succeeded').reduce((acc, t) => acc + (Number(t.amount) || 0), 0) || 0;
+            // Best guess for eggs spent from logs
+            const eggsSpent = logs?.filter(l => l.action_type === 'egg_spent' || l.description?.toLowerCase().includes('spent')).length || 0;
+
+            return {
+                profile: profile as Profile,
+                transactions: (transactions as Transaction[]) || [],
+                logs: logs || [],
+                tickets: (tickets as Ticket[]) || [],
+                cards: cards || [],
+                stats: {
+                    cardCount: cardCount || 0,
+                    lifetimeRevenue,
+                    eggsSpent
+                }
+            };
+        } catch (e) {
+            console.error("Error fetching complete profile:", e);
+            return null;
+        }
+    },
+
     create: async (profileData: Partial<Profile>) => {
         // Use safeUUID to prevent crashes in insecure contexts
         const payload = {
@@ -221,6 +266,14 @@ export const AdminService = {
             
             const { data, error } = await supabase.from('profiles').update({ egg_balance: newBalance }).eq('id', id).select().single();
             console.log(`[AUDIT] Adjusted eggs for ${id}: ${amount} ${type}. Reason: ${reason}`);
+            
+            // Log this action
+            await supabase.from('activity_logs').insert({
+                user_id: id,
+                action_type: 'admin_adjustment',
+                description: `Admin adjusted ${type} eggs by ${amount}. Reason: ${reason}`
+            });
+
             return { data: data as Profile, error };
         }
         return { error: 'Profile not found' };

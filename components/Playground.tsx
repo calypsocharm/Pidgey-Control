@@ -1,7 +1,8 @@
+
 import React, { useState, useEffect, useRef } from 'react';
-import { Image as ImageIcon, Sparkles, Upload, Save, Loader, AlertTriangle, RefreshCw, Palette, LayoutTemplate, Plus, Type, Move, AlignLeft, AlignCenter, AlignRight, ArrowUp, ArrowDown, Wand2, Layers, Snowflake, CloudRain, Zap, MonitorPlay, Film, MousePointer2, X, Square } from 'lucide-react';
+import { Image as ImageIcon, Sparkles, Upload, Save, Loader, RefreshCw, Palette, LayoutTemplate, Plus, Type, Film, X, Square, Copy, Download, Zap, Wand2, Layers, Snowflake, CloudRain, MonitorPlay, Move, ZoomIn, Scaling, FolderOpen, ChevronRight } from 'lucide-react';
 import { AdminService } from '../services/adminService';
-import { generateImageAsset } from '../services/geminiService';
+import { generateImageAsset, generateStampName } from '../services/geminiService';
 import { Stamp, Asset, StampRarity, StampStatus } from '../types';
 
 type StudioMode = 'stamps' | 'templates';
@@ -23,9 +24,23 @@ interface EffectConfig {
 }
 
 interface BorderConfig {
+    enabled: boolean;
     color: string;
     thickness: number;
-    style: 'dotted' | 'dashed' | 'solid' | 'double' | 'none';
+    style: 'solid' | 'dotted' | 'dashed' | 'double' | 'groove' | 'ridge' | 'perforated';
+    radius: number; // 0-50%
+    glowColor: string;
+    glowIntensity: number; // 0-50px
+    material: 'none' | 'gold' | 'silver' | 'neon' | 'holo' | 'matte';
+    // Inner Frame
+    innerColor: string;
+    innerThickness: number;
+}
+
+interface ArtConfig {
+    scale: number;
+    x: number;
+    y: number;
 }
 
 const STYLE_PRESETS = [
@@ -56,9 +71,13 @@ export const Playground = () => {
     const [previewUrl, setPreviewUrl] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
     
+    // Load Asset Modal State
+    const [isLoadModalOpen, setIsLoadModalOpen] = useState(false);
+    
     // Configuration State
     const [assetName, setAssetName] = useState('');
     const [showTextOverlay, setShowTextOverlay] = useState(true);
+    
     const [textConfig, setTextConfig] = useState<TextConfig>({
         text: "Pidgey Post",
         font: 'font-handwriting',
@@ -69,20 +88,35 @@ export const Playground = () => {
         posX: 50,
         posY: 50
     });
+    
     const [effectConfig, setEffectConfig] = useState<EffectConfig>({
         type: 'none',
         intensity: 50
     });
+    
     const [borderConfig, setBorderConfig] = useState<BorderConfig>({
-        color: '#334155', // Slate-700 default
-        thickness: 8,
-        style: 'dotted'
+        enabled: true,
+        color: '#ffffff',
+        thickness: 12,
+        style: 'perforated',
+        radius: 4,
+        glowColor: '#ffffff',
+        glowIntensity: 0,
+        material: 'none',
+        innerColor: '#cbd5e1', // Slate 300
+        innerThickness: 2
+    });
+
+    const [artConfig, setArtConfig] = useState<ArtConfig>({
+        scale: 1,
+        x: 0,
+        y: 0
     });
     
     // AI Input
     const [prompt, setPrompt] = useState('');
     const [selectedStyle, setSelectedStyle] = useState(STYLE_PRESETS[0]);
-    const [isAnimating, setIsAnimating] = useState(false); // Toggle for motion simulation
+    const [isAnimating, setIsAnimating] = useState(false);
     
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -109,7 +143,20 @@ export const Playground = () => {
         setPreviewUrl('');
         setAssetName('');
         setEffectConfig({ type: 'none', intensity: 50 });
-        setBorderConfig({ color: '#334155', thickness: 8, style: 'dotted' });
+        // Default to a nice perforated look for stamps
+        setBorderConfig({ 
+            enabled: true, 
+            color: '#ffffff', 
+            thickness: 12, 
+            style: 'perforated', 
+            radius: 4, 
+            glowColor: '#ffffff', 
+            glowIntensity: 0, 
+            material: 'none',
+            innerColor: '#cbd5e1',
+            innerThickness: 2
+        });
+        setArtConfig({ scale: 1, x: 0, y: 0 });
         setPrompt('');
         setIsAnimating(false);
     };
@@ -121,6 +168,12 @@ export const Playground = () => {
         setPreviewUrl(stamp.art_path || '');
         setAssetName(stamp.name);
         setPrompt(`A ${stamp.rarity.toLowerCase()} stamp of a ${stamp.name}`);
+        
+        // Restore Design Config if available
+        if (stamp.design_config) {
+            restoreDesignConfig(stamp.design_config);
+        }
+        
         setActiveTab('art');
     };
 
@@ -130,7 +183,7 @@ export const Playground = () => {
             id: 'new',
             name: 'New Stamp',
             rarity: StampRarity.COMMON,
-            status: StampStatus.ACTIVE,
+            status: StampStatus.DRAFT,
             price_eggs: 0,
             is_drop_only: false,
             art_path: '',
@@ -140,6 +193,16 @@ export const Playground = () => {
         setAssetName("New Stamp");
         setPrompt("A cute pigeon holding a letter...");
         setActiveTab('art');
+    };
+    
+    const restoreDesignConfig = (config: any) => {
+        if (config.border) setBorderConfig(config.border);
+        if (config.text) setTextConfig(config.text);
+        if (config.effect) setEffectConfig(config.effect);
+        if (config.art) setArtConfig(config.art);
+        if (config.showTextOverlay !== undefined) setShowTextOverlay(config.showTextOverlay);
+        if (config.prompt) setPrompt(config.prompt);
+        if (config.stylePreset) setSelectedStyle(config.stylePreset);
     };
 
     const handleSelectTemplate = (template: Asset) => {
@@ -191,17 +254,14 @@ export const Playground = () => {
         if (!prompt) return;
         setIsProcessing(true);
         try {
-            // Construct enhanced prompt
             const stylePrompt = selectedStyle.prompt ? `, in the style of ${selectedStyle.prompt}` : '';
             const motionPrompt = isAnimating ? ', cinematic lighting, dynamic pose, sequence frame' : '';
             const fullPrompt = `${prompt}${stylePrompt}${motionPrompt}`;
 
             const base64 = await generateImageAsset(fullPrompt);
             if (base64) {
-                // Determine mime type based on if we requested motion (mock logic for now)
-                // In a real implementation with Veo, we'd handle .mp4 or .gif
                 const bucket = mode === 'stamps' ? 'stamps' : 'templates';
-                const { data, error } = await AdminService.files.uploadBase64(base64, bucket);
+                const { data } = await AdminService.files.uploadBase64(base64, bucket);
                 
                 if (data) {
                     setPreviewUrl(data.url);
@@ -217,6 +277,19 @@ export const Playground = () => {
         setIsProcessing(false);
     };
 
+    const handleAutoName = async () => {
+        if (!selectedStamp) return;
+        setIsProcessing(true);
+        const name = await generateStampName({
+            rarity: selectedStamp.rarity,
+            material: borderConfig.material,
+            style: borderConfig.style,
+            visualPrompt: prompt || "Unknown visual"
+        });
+        setAssetName(name);
+        setIsProcessing(false);
+    };
+
     const handleSave = async () => {
         if (!previewUrl) return;
         setIsProcessing(true);
@@ -224,13 +297,23 @@ export const Playground = () => {
         if (mode === 'stamps') {
             if (!selectedStamp) return;
             
-            // If editing existing, update it. If new, create it.
-            // Note: In this playground, we mostly just update the 'art_path' of the stamp entity
-            // but keep the effect config local (in a real app, effectConfig would be saved to DB)
+            // Gather full design state
+            const designConfig = {
+                border: borderConfig,
+                text: textConfig,
+                effect: effectConfig,
+                art: artConfig,
+                showTextOverlay: showTextOverlay,
+                prompt: prompt,
+                stylePreset: selectedStyle
+            };
+
             const payload = {
                 name: assetName,
                 art_path: previewUrl,
-                rarity: selectedStamp.rarity, // Preserve rarity
+                rarity: selectedStamp.rarity,
+                status: StampStatus.DRAFT, // Always save as Draft first
+                design_config: designConfig
             };
 
             if (selectedStamp.id !== 'new') {
@@ -240,19 +323,105 @@ export const Playground = () => {
                     alert("Stamp updated successfully!");
                  }
             } else {
-                 // Mock creation flow
-                 alert(`New Stamp "${assetName}" drafted! Head to Drops to publish.`);
+                 const { data, error } = await AdminService.stamps.create({
+                    ...payload,
+                    id: `stp_${Date.now()}`,
+                    created_at: new Date().toISOString()
+                 });
+                 if (!error && data) {
+                     setStamps(prev => [data, ...prev]);
+                     alert(`New Stamp "${assetName}" saved as Draft! Go to Designation Studio to finalize.`);
+                 }
             }
         } else {
-            // Templates
              alert("Template saved to library!");
         }
         setIsProcessing(false);
     };
 
+    const copyBorderStyle = () => {
+        const json = JSON.stringify(borderConfig);
+        navigator.clipboard.writeText(json);
+        alert("Border style copied to clipboard!");
+    };
+
+    const pasteBorderStyle = async () => {
+        try {
+            const text = await navigator.clipboard.readText();
+            const config = JSON.parse(text);
+            if (config.thickness !== undefined && config.radius !== undefined) {
+                setBorderConfig(config);
+            } else {
+                alert("Invalid border style JSON.");
+            }
+        } catch (e) {
+            alert("Could not paste style.");
+        }
+    };
+
+    // --- Material CSS Generators ---
+    const getMaterialStyle = (config: BorderConfig, canvasBg: string) => {
+        const baseStyle: React.CSSProperties = {
+            borderRadius: `${config.radius}px`,
+        };
+
+        // --- Perforated Logic ---
+        if (config.style === 'perforated') {
+            const bg = config.material !== 'none' ? getMaterialBackground(config.material) : config.color;
+            // ART CONTAINMENT LOGIC:
+            // Calculate a safe padding to contain the art inside the perforations.
+            // We want the art to clear the holes plus a small margin.
+            const safePadding = Math.max(4, config.thickness / 2 + 2); 
+            
+            return {
+                ...baseStyle,
+                background: bg,
+                // The dots match the canvas, creating the illusion of holes
+                border: `${config.thickness}px dotted ${canvasBg}`,
+                backgroundClip: 'border-box',
+                // Perforated edge usually looks better with minimal radius
+                boxShadow: 'none',
+                filter: config.glowIntensity > 0 ? `drop-shadow(0 0 ${config.glowIntensity}px ${config.glowColor})` : 'none',
+                padding: `${safePadding}px` // Ensures image doesn't bleed into holes
+            };
+        }
+
+        // --- Standard Border Logic (Dashed/Dotted/Double) ---
+        if (config.style !== 'solid') {
+             return {
+                 ...baseStyle,
+                 border: `${config.thickness}px ${config.style} ${config.color}`,
+                 background: 'transparent',
+                 padding: 0,
+                 boxShadow: config.glowIntensity > 0 ? `0 0 ${config.glowIntensity}px ${config.glowColor}, 0 0 ${config.glowIntensity / 2}px ${config.glowColor} inset` : 'none',
+             };
+        }
+
+        // --- Solid / Material Logic ---
+        const materialBg = config.material !== 'none' ? getMaterialBackground(config.material) : config.color;
+        
+        return { 
+            ...baseStyle, 
+            background: materialBg,
+            padding: `${config.thickness}px`,
+            boxShadow: config.glowIntensity > 0 ? `0 0 ${config.glowIntensity}px ${config.glowColor}, 0 0 ${config.glowIntensity / 2}px ${config.glowColor} inset` : 'none',
+        };
+    };
+
+    const getMaterialBackground = (material: string) => {
+        switch (material) {
+            case 'gold': return 'linear-gradient(135deg, #bf953f, #fcf6ba, #b38728, #fbf5b7, #aa771c)';
+            case 'silver': return 'linear-gradient(135deg, #e0e0e0, #ffffff, #a0a0a0, #ffffff, #c0c0c0)';
+            case 'neon': return 'linear-gradient(135deg, #ff00cc, #333399)';
+            case 'holo': return 'linear-gradient(135deg, #ff0000, #ff7f00, #ffff00, #00ff00, #0000ff, #4b0082, #9400d3)';
+            default: return 'white';
+        }
+    };
+
+    const CANVAS_BG_COLOR = '#0f172a'; // pidgey-dark
+
     return (
         <div className="h-[calc(100vh-8rem)] flex gap-6">
-            {/* INJECTED STYLES FOR FX */}
             <style>{`
                 @keyframes snow { 0% { transform: translateY(-10px); opacity: 0; } 20% { opacity: 1; } 100% { transform: translateY(100vh); opacity: 0; } }
                 .fx-snow { position: absolute; top: -10px; width: 100%; height: 100%; pointer-events: none; z-index: 20; background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMCIgaGVpZ2h0PSIxMCI+PGNpcmNsZSBjeD0iNSIgY3k9IjUiIHI9IjIuNSIgZmlsbD0id2hpdGUiIG9wYWNpdHk9IjAuNSIvPjwvc3ZnPg=='); animation: snow 10s linear infinite; }
@@ -335,54 +504,96 @@ export const Playground = () => {
                 ) : (
                     <>
                         {/* Toolbar Header */}
-                        <div className="h-16 border-b border-pidgey-border bg-pidgey-panel px-6 flex items-center justify-between">
-                             <div>
-                                <input 
-                                    value={assetName} 
-                                    onChange={(e) => setAssetName(e.target.value)}
-                                    className="bg-transparent text-lg font-bold text-white focus:outline-none placeholder-pidgey-muted"
-                                    placeholder="Asset Name"
-                                />
-                                <div className="flex gap-2 text-[10px] uppercase font-bold text-pidgey-muted mt-1">
-                                    <span>{mode === 'stamps' ? 'Stamp Entity' : 'Card Template'}</span>
-                                    <span>•</span>
-                                    <span>{effectConfig.type !== 'none' ? `FX: ${effectConfig.type}` : 'Static'}</span>
+                        <div className="h-16 border-b border-pidgey-border bg-pidgey-panel px-6 flex items-center justify-between z-10">
+                             <div className="flex items-center gap-2">
+                                <div className="relative">
+                                    <input 
+                                        value={assetName} 
+                                        onChange={(e) => setAssetName(e.target.value)}
+                                        className="bg-transparent text-lg font-bold text-white focus:outline-none placeholder-pidgey-muted pr-8"
+                                        placeholder="Asset Name"
+                                    />
+                                    {mode === 'stamps' && (
+                                        <button 
+                                            onClick={handleAutoName}
+                                            disabled={isProcessing}
+                                            className="absolute right-0 top-1/2 -translate-y-1/2 text-pidgey-muted hover:text-pidgey-accent"
+                                            title="Auto-Name with Pidgey AI"
+                                        >
+                                            <Sparkles size={16} className={isProcessing ? 'animate-spin' : ''} />
+                                        </button>
+                                    )}
+                                </div>
+                                <div className="h-8 w-px bg-pidgey-border mx-2"></div>
+                                <div className="flex flex-col">
+                                    <span className={`text-[10px] uppercase font-bold ${mode === 'stamps' ? 'text-pidgey-accent' : 'text-blue-400'}`}>
+                                        {mode === 'stamps' ? 'Stamp Studio (3:4)' : 'Template Studio (16:9)'}
+                                    </span>
+                                    <span className="text-[10px] uppercase font-bold text-pidgey-muted">{effectConfig.type !== 'none' ? `FX: ${effectConfig.type}` : 'Static'}</span>
                                 </div>
                              </div>
-                             <button 
-                                onClick={handleSave}
-                                disabled={isProcessing || !previewUrl}
-                                className="px-6 py-2 bg-pidgey-accent text-pidgey-dark font-bold rounded-lg hover:bg-teal-300 transition flex items-center gap-2 shadow-lg hover:shadow-teal-400/20 disabled:opacity-50"
-                             >
-                                <Save size={18} /> Save Asset
-                            </button>
+                             <div className="flex items-center gap-3">
+                                 {mode === 'stamps' && (
+                                     <>
+                                         <button 
+                                            onClick={() => setIsLoadModalOpen(true)}
+                                            className="flex items-center gap-2 text-pidgey-muted hover:text-white px-3 py-1.5 border border-pidgey-border rounded-lg bg-pidgey-dark text-xs font-bold uppercase transition"
+                                         >
+                                             <FolderOpen size={14} /> Load Asset
+                                         </button>
+                                         <div className="flex gap-2 mr-4 border-r border-pidgey-border pr-4">
+                                             <button onClick={copyBorderStyle} className="text-pidgey-muted hover:text-white" title="Copy Border Style"><Copy size={16}/></button>
+                                             <button onClick={pasteBorderStyle} className="text-pidgey-muted hover:text-white" title="Paste Border Style"><Download size={16}/></button>
+                                         </div>
+                                     </>
+                                 )}
+                                 <button 
+                                    onClick={handleSave}
+                                    disabled={isProcessing || !previewUrl}
+                                    className="px-6 py-2 bg-pidgey-accent text-pidgey-dark font-bold rounded-lg hover:bg-teal-300 transition flex items-center gap-2 shadow-lg hover:shadow-teal-400/20 disabled:opacity-50"
+                                 >
+                                    <Save size={18} /> Save Draft
+                                </button>
+                             </div>
                         </div>
 
                         {/* Canvas Area */}
-                        <div className="flex-1 bg-[radial-gradient(#334155_1px,transparent_1px)] [background-size:20px_20px] relative flex items-center justify-center overflow-hidden p-8">
+                        <div className={`flex-1 bg-[radial-gradient(#334155_1px,transparent_1px)] [background-size:20px_20px] relative flex items-center justify-center overflow-hidden p-8 ${mode === 'stamps' ? 'bg-pidgey-dark' : 'bg-slate-900'}`}>
                             
                             {/* THE COMPOSITION LAYER */}
                             <div className={`relative transition-all duration-300 shadow-2xl ${
                                 mode === 'stamps' 
-                                ? `w-[360px] h-[480px] ${effectConfig.type === 'pulse' ? 'fx-pulse' : ''} ${effectConfig.type === 'glitch' ? 'fx-glitch' : ''}` // Stamp Ratio 3:4
-                                : `w-[400px] h-[560px]` // Card Ratio
+                                ? `w-[300px] h-[400px] ${effectConfig.type === 'pulse' ? 'fx-pulse' : ''} ${effectConfig.type === 'glitch' ? 'fx-glitch' : ''}` // Stamp Ratio 3:4
+                                : `w-[800px] h-[450px]` // Template Ratio 16:9 (Scaled for UI)
                             }`}>
-                                {/* 1. Base Art Layer */}
+                                {/* 1. Base Art Layer with Advanced Border */}
                                 <div 
-                                    style={mode === 'stamps' ? { 
-                                        borderColor: borderConfig.color, 
-                                        borderWidth: `${borderConfig.thickness}px`, 
-                                        borderStyle: borderConfig.style 
-                                    } : {}}
-                                    className={`absolute inset-0 bg-white overflow-hidden ${mode === 'stamps' ? 'rounded-xl bg-pidgey-panel' : 'rounded-lg shadow-md'}`}
+                                    style={mode === 'stamps' && borderConfig.enabled ? getMaterialStyle(borderConfig, CANVAS_BG_COLOR) : { borderRadius: '12px', overflow: 'hidden' }}
+                                    className={`absolute inset-0 transition-all duration-300 ${mode === 'stamps' ? '' : 'rounded-lg shadow-md bg-white'}`}
                                 >
-                                    {previewUrl ? (
-                                        <img src={previewUrl} className={`w-full h-full ${mode === 'stamps' ? 'object-contain p-4' : 'object-cover'}`} />
-                                    ) : (
-                                        <div className="w-full h-full flex items-center justify-center text-slate-300 bg-slate-100">
-                                            <ImageIcon size={48} className="opacity-50" />
-                                        </div>
-                                    )}
+                                    <div className="w-full h-full overflow-hidden flex items-center justify-center relative" style={{ 
+                                        borderRadius: mode === 'stamps' && borderConfig.enabled ? `${Math.max(2, borderConfig.radius - borderConfig.thickness)}px` : 'inherit',
+                                        backgroundColor: mode === 'stamps' ? '#1e293b' : 'white', // Inner background for the art
+                                        // Apply inner border for frames
+                                        border: mode === 'stamps' && borderConfig.enabled && borderConfig.innerThickness > 0 ? `${borderConfig.innerThickness}px solid ${borderConfig.innerColor}` : 'none',
+                                        boxSizing: 'border-box'
+                                    }}>
+                                        {previewUrl ? (
+                                            <img 
+                                                src={previewUrl} 
+                                                className={`w-full h-full ${mode === 'stamps' ? 'object-contain' : 'object-cover'}`} 
+                                                style={{
+                                                    transform: `scale(${artConfig.scale}) translate(${artConfig.x}px, ${artConfig.y}px)`,
+                                                    transition: 'transform 0.1s ease-out'
+                                                }}
+                                            />
+                                        ) : (
+                                            <div className="flex flex-col items-center justify-center text-slate-500 opacity-50">
+                                                <ImageIcon size={48} className="mb-2" />
+                                                <span className="text-[10px] font-bold uppercase">No Image</span>
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
 
                                 {/* 2. Effects Layer (Overlay) */}
@@ -390,7 +601,7 @@ export const Playground = () => {
                                 {effectConfig.type === 'rain' && <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/diagonal-stripes.png')] opacity-20 pointer-events-none mix-blend-overlay" />}
                                 {effectConfig.type === 'holographic' && <div className="absolute inset-0 bg-gradient-to-tr from-pink-500/20 via-blue-500/20 to-green-500/20 fx-holographic pointer-events-none rounded-xl" />}
 
-                                {/* 3. Text Layer (Draggable Simulation) */}
+                                {/* 3. Text Layer */}
                                 {showTextOverlay && (
                                     <div 
                                         className={`absolute pointer-events-none`}
@@ -436,10 +647,10 @@ export const Playground = () => {
                             <ImageIcon size={16} /> Base Art
                         </button>
                         <button onClick={() => setActiveTab('text')} className={`flex-1 py-3 text-[10px] font-bold uppercase flex flex-col items-center gap-1 ${activeTab === 'text' ? 'text-pidgey-accent border-b-2 border-pidgey-accent bg-pidgey-panel' : 'text-pidgey-muted hover:text-white'}`}>
-                            <Type size={16} /> Typography
+                            <Type size={16} /> Text
                         </button>
                         <button onClick={() => setActiveTab('fx')} className={`flex-1 py-3 text-[10px] font-bold uppercase flex flex-col items-center gap-1 ${activeTab === 'fx' ? 'text-pidgey-accent border-b-2 border-pidgey-accent bg-pidgey-panel' : 'text-pidgey-muted hover:text-white'}`}>
-                            <Sparkles size={16} /> FX & GIF
+                            <Sparkles size={16} /> FX & Style
                         </button>
                     </div>
 
@@ -452,41 +663,138 @@ export const Playground = () => {
                                 <div>
                                     <h3 className="text-xs font-bold text-white uppercase mb-3 flex items-center gap-2"><Upload size={14} className="text-pidgey-accent"/> Manual Upload</h3>
                                     <input type="file" ref={fileInputRef} className="hidden" accept="image/*, image/gif" onChange={handleFileUpload} />
-                                    <div onClick={() => fileInputRef.current?.click()} className="h-24 border border-dashed border-pidgey-border rounded-lg flex flex-col items-center justify-center text-pidgey-muted hover:border-pidgey-accent hover:text-white cursor-pointer hover:bg-pidgey-dark transition">
-                                        <Upload size={20} className="mb-2" />
-                                        <span className="text-[10px] font-bold uppercase">Click to Browse</span>
-                                        <span className="text-[9px] opacity-60">PNG, JPG, GIF supported</span>
+                                    <div onClick={() => fileInputRef.current?.click()} className="h-20 border border-dashed border-pidgey-border rounded-lg flex flex-col items-center justify-center text-pidgey-muted hover:border-pidgey-accent hover:text-white cursor-pointer hover:bg-pidgey-dark transition">
+                                        <Upload size={20} className="mb-1" />
+                                        <span className="text-[9px] font-bold uppercase">Click to Browse</span>
                                     </div>
                                 </div>
+
+                                <div className="h-px bg-pidgey-border" />
+                                
+                                {/* Art Adjustment Controls */}
+                                <div>
+                                    <h3 className="text-xs font-bold text-white uppercase mb-3 flex items-center gap-2"><Scaling size={14} className="text-pidgey-accent"/> Art Adjustment</h3>
+                                    
+                                    <div className="space-y-4">
+                                        <div>
+                                            <div className="flex justify-between items-center mb-1">
+                                                <label className="text-[9px] font-bold text-pidgey-muted uppercase flex items-center gap-1"><ZoomIn size={10}/> Scale</label>
+                                                <span className="text-[9px] font-mono text-white">{artConfig.scale.toFixed(1)}x</span>
+                                            </div>
+                                            <input 
+                                                type="range" min="0.5" max="2.0" step="0.1"
+                                                value={artConfig.scale} 
+                                                onChange={e => setArtConfig({...artConfig, scale: parseFloat(e.target.value)})} 
+                                                className="w-full h-1 bg-pidgey-border rounded-lg appearance-none cursor-pointer accent-pidgey-accent"
+                                            />
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div>
+                                                <label className="text-[9px] font-bold text-pidgey-muted uppercase mb-1 flex items-center gap-1"><Move size={10}/> Pan X</label>
+                                                <input 
+                                                    type="number" 
+                                                    value={artConfig.x} 
+                                                    onChange={e => setArtConfig({...artConfig, x: parseInt(e.target.value)})} 
+                                                    className="w-full bg-pidgey-dark border border-pidgey-border rounded p-1.5 text-xs text-white text-center"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="text-[9px] font-bold text-pidgey-muted uppercase mb-1 flex items-center gap-1"><Move size={10} className="rotate-90"/> Pan Y</label>
+                                                 <input 
+                                                    type="number" 
+                                                    value={artConfig.y} 
+                                                    onChange={e => setArtConfig({...artConfig, y: parseInt(e.target.value)})} 
+                                                    className="w-full bg-pidgey-dark border border-pidgey-border rounded p-1.5 text-xs text-white text-center"
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
 
                                 {mode === 'stamps' && (
                                     <>
                                         <div className="h-px bg-pidgey-border" />
                                         <div>
-                                             <h3 className="text-xs font-bold text-white uppercase mb-3 flex items-center gap-2"><Square size={14} className="text-pidgey-accent"/> Stamp Border</h3>
-                                             <div className="space-y-3">
+                                             <div className="flex justify-between items-center mb-3">
+                                                 <h3 className="text-xs font-bold text-white uppercase flex items-center gap-2"><Square size={14} className="text-pidgey-accent"/> Border Editor</h3>
+                                                 <button 
+                                                    onClick={() => setBorderConfig(prev => ({ ...prev, enabled: !prev.enabled }))}
+                                                    className={`w-8 h-4 rounded-full relative transition-colors ${borderConfig.enabled ? 'bg-pidgey-accent' : 'bg-pidgey-border'}`}
+                                                 >
+                                                     <div className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-all ${borderConfig.enabled ? 'left-4.5' : 'left-0.5'}`}></div>
+                                                 </button>
+                                             </div>
+                                             
+                                             <div className={`space-y-4 ${!borderConfig.enabled ? 'opacity-40 pointer-events-none' : ''}`}>
+                                                 {/* Material Selector */}
+                                                 <div className="grid grid-cols-3 gap-2">
+                                                     {['none', 'matte', 'gold', 'silver', 'neon', 'holo'].map(mat => (
+                                                         <button 
+                                                            key={mat}
+                                                            onClick={() => setBorderConfig({ ...borderConfig, material: mat as any })}
+                                                            className={`text-[9px] font-bold uppercase p-1.5 rounded border text-center transition ${borderConfig.material === mat ? 'bg-pidgey-accent text-pidgey-dark border-pidgey-accent' : 'border-pidgey-border text-pidgey-muted hover:border-white'}`}
+                                                         >
+                                                             {mat}
+                                                         </button>
+                                                     ))}
+                                                 </div>
+
                                                  <div className="grid grid-cols-2 gap-3">
                                                      <div>
-                                                         <label className="text-[10px] font-bold text-pidgey-muted uppercase mb-1 block">Color</label>
+                                                         <label className="text-[9px] font-bold text-pidgey-muted uppercase mb-1 block">Color</label>
                                                          <div className="flex items-center gap-2 bg-pidgey-dark border border-pidgey-border rounded p-1.5">
-                                                            <input type="color" value={borderConfig.color} onChange={e => setBorderConfig({...borderConfig, color: e.target.value})} className="w-6 h-6 rounded cursor-pointer border-none bg-transparent" />
-                                                            <span className="text-[10px] font-mono text-white">{borderConfig.color}</span>
+                                                            <input type="color" value={borderConfig.color} onChange={e => setBorderConfig({...borderConfig, color: e.target.value})} className="w-5 h-5 rounded cursor-pointer border-none bg-transparent" />
+                                                            <span className="text-[9px] font-mono text-white truncate">{borderConfig.color}</span>
                                                         </div>
                                                      </div>
                                                      <div>
-                                                         <label className="text-[10px] font-bold text-pidgey-muted uppercase mb-1 block">Thickness</label>
-                                                         <input type="number" value={borderConfig.thickness} onChange={e => setBorderConfig({...borderConfig, thickness: parseInt(e.target.value)})} className="w-full bg-pidgey-dark border border-pidgey-border rounded p-2 text-xs text-white" />
+                                                         <label className="text-[9px] font-bold text-pidgey-muted uppercase mb-1 block">Style</label>
+                                                         <select value={borderConfig.style} onChange={e => setBorderConfig({...borderConfig, style: e.target.value as any})} className="w-full bg-pidgey-dark border border-pidgey-border rounded p-1.5 text-[10px] text-white outline-none">
+                                                            <option value="solid">Solid</option>
+                                                            <option value="perforated">Perforated</option>
+                                                            <option value="dotted">Dotted</option>
+                                                            <option value="dashed">Dashed</option>
+                                                            <option value="double">Double</option>
+                                                        </select>
                                                      </div>
                                                  </div>
+
                                                  <div>
-                                                    <label className="text-[10px] font-bold text-pidgey-muted uppercase mb-1 block">Style</label>
-                                                    <select value={borderConfig.style} onChange={e => setBorderConfig({...borderConfig, style: e.target.value as any})} className="w-full bg-pidgey-dark border border-pidgey-border rounded p-2 text-xs text-white">
-                                                        <option value="dotted">Dotted</option>
-                                                        <option value="dashed">Dashed</option>
-                                                        <option value="solid">Solid</option>
-                                                        <option value="double">Double</option>
-                                                        <option value="none">None</option>
-                                                    </select>
+                                                     <label className="text-[9px] font-bold text-pidgey-muted uppercase mb-1 flex justify-between">
+                                                         <span>Thickness (Padding)</span> <span>{borderConfig.thickness}px</span>
+                                                     </label>
+                                                     <input type="range" min="0" max="40" value={borderConfig.thickness} onChange={e => setBorderConfig({...borderConfig, thickness: parseInt(e.target.value)})} className="w-full h-1 bg-pidgey-border rounded-lg appearance-none cursor-pointer accent-pidgey-accent" />
+                                                 </div>
+                                                 
+                                                 <div>
+                                                     <label className="text-[9px] font-bold text-pidgey-muted uppercase mb-1 flex justify-between">
+                                                         <span>Corner Radius</span> <span>{borderConfig.radius}px</span>
+                                                     </label>
+                                                     <input type="range" min="0" max="160" value={borderConfig.radius} onChange={e => setBorderConfig({...borderConfig, radius: parseInt(e.target.value)})} className="w-full h-1 bg-pidgey-border rounded-lg appearance-none cursor-pointer accent-pidgey-accent" />
+                                                 </div>
+
+                                                 <div>
+                                                     <label className="text-[9px] font-bold text-pidgey-muted uppercase mb-1 flex justify-between">
+                                                         <span>Inner Frame</span> <span>{borderConfig.innerThickness}px</span>
+                                                     </label>
+                                                     <div className="flex gap-2">
+                                                          <div className="flex items-center gap-2 bg-pidgey-dark border border-pidgey-border rounded p-1.5 flex-1">
+                                                             <input type="color" value={borderConfig.innerColor} onChange={e => setBorderConfig({...borderConfig, innerColor: e.target.value})} className="w-5 h-5 rounded cursor-pointer border-none bg-transparent" />
+                                                             <span className="text-[9px] font-mono text-white truncate">{borderConfig.innerColor}</span>
+                                                         </div>
+                                                         <div className="flex-[2]">
+                                                             <input type="range" min="0" max="20" value={borderConfig.innerThickness} onChange={e => setBorderConfig({...borderConfig, innerThickness: parseInt(e.target.value)})} className="w-full h-full bg-pidgey-border rounded-lg appearance-none cursor-pointer accent-pidgey-accent" />
+                                                         </div>
+                                                     </div>
+                                                 </div>
+                                                 
+                                                 <div className="p-3 bg-pidgey-dark rounded-lg border border-pidgey-border">
+                                                     <div className="flex justify-between items-center mb-2">
+                                                         <span className="text-[9px] font-bold text-white uppercase flex items-center gap-1"><Zap size={10} className="text-yellow-400"/> Glow</span>
+                                                         <input type="color" value={borderConfig.glowColor} onChange={e => setBorderConfig({...borderConfig, glowColor: e.target.value})} className="w-4 h-4 rounded cursor-pointer border-none bg-transparent" />
+                                                     </div>
+                                                     <input type="range" min="0" max="50" value={borderConfig.glowIntensity} onChange={e => setBorderConfig({...borderConfig, glowIntensity: parseInt(e.target.value)})} className="w-full h-1 bg-pidgey-border rounded-lg appearance-none cursor-pointer accent-yellow-400" />
                                                  </div>
                                              </div>
                                         </div>
@@ -497,7 +805,7 @@ export const Playground = () => {
 
                                 {/* Gen AI Section */}
                                 <div>
-                                    <h3 className="text-xs font-bold text-white uppercase mb-3 flex items-center gap-2"><Wand2 size={14} className="text-pidgey-secondary"/> Generative Studio v2</h3>
+                                    <h3 className="text-xs font-bold text-white uppercase mb-3 flex items-center gap-2"><Wand2 size={14} className="text-pidgey-secondary"/> AI Asset Gen</h3>
                                     
                                     <div className="mb-3">
                                         <label className="text-[10px] font-bold text-pidgey-muted uppercase mb-1 block">Style Preset</label>
@@ -506,7 +814,7 @@ export const Playground = () => {
                                                 <button 
                                                     key={style.id}
                                                     onClick={() => setSelectedStyle(style)}
-                                                    className={`px-2 py-1.5 rounded text-[10px] font-bold border transition ${selectedStyle.id === style.id ? 'bg-pidgey-secondary text-white border-pidgey-secondary' : 'bg-pidgey-dark text-pidgey-muted border-pidgey-border hover:border-pidgey-muted'}`}
+                                                    className={`px-2 py-1.5 rounded text-[10px] font-bold border transition truncate ${selectedStyle.id === style.id ? 'bg-pidgey-secondary text-white border-pidgey-secondary' : 'bg-pidgey-dark text-pidgey-muted border-pidgey-border hover:border-pidgey-muted'}`}
                                                 >
                                                     {style.label}
                                                 </button>
@@ -515,16 +823,15 @@ export const Playground = () => {
                                     </div>
 
                                     <div className="mb-3">
-                                        <label className="text-[10px] font-bold text-pidgey-muted uppercase mb-1 block">Magic Prompt</label>
                                         <textarea 
                                             value={prompt}
                                             onChange={e => setPrompt(e.target.value)}
-                                            className="w-full h-24 bg-pidgey-dark border border-pidgey-border rounded-lg p-3 text-xs focus:border-pidgey-secondary outline-none resize-none text-white"
+                                            className="w-full h-20 bg-pidgey-dark border border-pidgey-border rounded-lg p-3 text-xs focus:border-pidgey-secondary outline-none resize-none text-white"
                                             placeholder="Describe your vision..."
                                         />
                                     </div>
                                     
-                                    <div className="flex items-center gap-2 mb-3 bg-pidgey-dark p-2 rounded border border-pidgey-border">
+                                    <div className="flex items-center gap-2 mb-3">
                                         <input 
                                             type="checkbox" 
                                             id="animate" 
@@ -532,17 +839,17 @@ export const Playground = () => {
                                             onChange={e => setIsAnimating(e.target.checked)} 
                                             className="rounded border-pidgey-border bg-pidgey-panel text-pidgey-secondary focus:ring-pidgey-secondary"
                                         />
-                                        <label htmlFor="animate" className="text-xs font-bold text-white cursor-pointer flex items-center gap-2">
-                                            <Film size={12} /> Generate as GIF / Motion
+                                        <label htmlFor="animate" className="text-[10px] font-bold text-pidgey-muted cursor-pointer flex items-center gap-1">
+                                            <Film size={10} /> Generate as GIF / Motion
                                         </label>
                                     </div>
 
                                     <button 
                                         onClick={handleGenerateAI}
                                         disabled={isProcessing || !prompt}
-                                        className="w-full py-2.5 bg-gradient-to-r from-pidgey-secondary to-purple-600 text-white font-bold rounded-lg hover:brightness-110 transition flex items-center justify-center gap-2 text-xs"
+                                        className="w-full py-2 bg-gradient-to-r from-pidgey-secondary to-purple-600 text-white font-bold rounded-lg hover:brightness-110 transition flex items-center justify-center gap-2 text-xs"
                                     >
-                                        <Sparkles size={14} /> Generate Masterpiece
+                                        <Sparkles size={14} /> Generate
                                     </button>
                                 </div>
                             </div>
@@ -552,11 +859,13 @@ export const Playground = () => {
                         {activeTab === 'text' && (
                             <div className="space-y-5">
                                 <div className="flex items-center justify-between">
-                                    <h3 className="text-xs font-bold text-white uppercase">Text Layer</h3>
-                                    <label className="relative inline-flex items-center cursor-pointer">
-                                        <input type="checkbox" checked={showTextOverlay} onChange={e => setShowTextOverlay(e.target.checked)} className="sr-only peer" />
-                                        <div className="w-9 h-5 bg-pidgey-dark border border-pidgey-border peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-pidgey-muted after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-pidgey-accent peer-checked:after:bg-white"></div>
-                                    </label>
+                                    <h3 className="text-xs font-bold text-white uppercase">Text Overlay</h3>
+                                    <button 
+                                        onClick={() => setShowTextOverlay(!showTextOverlay)}
+                                        className={`w-8 h-4 rounded-full relative transition-colors ${showTextOverlay ? 'bg-pidgey-accent' : 'bg-pidgey-border'}`}
+                                    >
+                                        <div className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-all ${showTextOverlay ? 'left-4.5' : 'left-0.5'}`}></div>
+                                    </button>
                                 </div>
 
                                 <textarea 
@@ -607,30 +916,6 @@ export const Playground = () => {
                                         </div>
                                     </div>
                                 </div>
-
-                                <div>
-                                    <label className="text-[10px] font-bold text-pidgey-muted uppercase mb-2 block flex items-center gap-2"><MousePointer2 size={12}/> Position (X / Y)</label>
-                                    <div className="space-y-3 bg-pidgey-dark p-3 rounded-lg border border-pidgey-border">
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-[10px] w-4 text-pidgey-muted">X</span>
-                                            <input 
-                                                type="range" min="0" max="100" 
-                                                value={textConfig.posX} 
-                                                onChange={e => setTextConfig({...textConfig, posX: parseInt(e.target.value)})} 
-                                                className="flex-1 h-1 bg-pidgey-border rounded-lg appearance-none cursor-pointer accent-pidgey-accent"
-                                            />
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-[10px] w-4 text-pidgey-muted">Y</span>
-                                            <input 
-                                                type="range" min="0" max="100" 
-                                                value={textConfig.posY} 
-                                                onChange={e => setTextConfig({...textConfig, posY: parseInt(e.target.value)})} 
-                                                className="flex-1 h-1 bg-pidgey-border rounded-lg appearance-none cursor-pointer accent-pidgey-accent"
-                                            />
-                                        </div>
-                                    </div>
-                                </div>
                             </div>
                         )}
 
@@ -638,8 +923,7 @@ export const Playground = () => {
                         {activeTab === 'fx' && (
                             <div className="space-y-6">
                                 <div>
-                                    <h3 className="text-xs font-bold text-white uppercase mb-3 flex items-center gap-2"><MonitorPlay size={14} className="text-green-400"/> Animation Engine</h3>
-                                    <p className="text-[10px] text-pidgey-muted mb-3">Apply CSS-based motion effects to your assets.</p>
+                                    <h3 className="text-xs font-bold text-white uppercase mb-3 flex items-center gap-2"><MonitorPlay size={14} className="text-green-400"/> Animation FX</h3>
                                     
                                     <div className="grid grid-cols-2 gap-2">
                                         {[
@@ -682,11 +966,6 @@ export const Playground = () => {
                                         />
                                     </div>
                                 )}
-
-                                <div className="p-3 bg-yellow-900/10 border border-yellow-700/30 rounded text-xs text-yellow-500">
-                                    <h4 className="font-bold flex items-center gap-2 mb-1"><AlertTriangle size={12}/> Pro Tip</h4>
-                                    <p className="opacity-80">Effects are rendered via CSS. If you save a static image, effects won't bake in unless you use the "Generate as GIF" option in AI tools.</p>
-                                </div>
                             </div>
                         )}
 
@@ -695,6 +974,39 @@ export const Playground = () => {
             ) : (
                 <div className="w-80 bg-pidgey-dark/30 border border-dashed border-pidgey-border rounded-xl flex items-center justify-center text-pidgey-muted p-6 text-center">
                     <p className="text-xs">Select an item to open Inspector</p>
+                </div>
+            )}
+
+            {/* Load Asset Modal */}
+            {isLoadModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+                    <div className="bg-pidgey-panel border border-pidgey-border rounded-xl w-full max-w-4xl shadow-2xl p-6 h-[70vh] flex flex-col animate-in zoom-in-95 duration-200">
+                        <div className="flex justify-between items-center mb-4 border-b border-pidgey-border pb-4">
+                            <h2 className="text-xl font-bold flex items-center gap-2">
+                                <FolderOpen size={20} className="text-pidgey-accent" /> Load Asset for Editing
+                            </h2>
+                            <button onClick={() => setIsLoadModalOpen(false)} className="text-pidgey-muted hover:text-white"><X size={20}/></button>
+                        </div>
+                        
+                        <div className="flex-1 overflow-y-auto grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4 pr-2">
+                            {stamps.map(stamp => (
+                                <div 
+                                    key={stamp.id} 
+                                    onClick={() => {
+                                        handleSelectStamp(stamp);
+                                        setIsLoadModalOpen(false);
+                                    }}
+                                    className="bg-pidgey-dark border border-pidgey-border rounded-xl p-3 cursor-pointer hover:border-pidgey-accent hover:-translate-y-1 transition-all group"
+                                >
+                                    <div className="aspect-[3/4] bg-pidgey-panel rounded-lg mb-2 flex items-center justify-center overflow-hidden relative">
+                                        {stamp.art_path ? <img src={stamp.art_path} className="w-full h-full object-contain p-2" /> : <ImageIcon size={24} className="opacity-20"/>}
+                                    </div>
+                                    <div className="font-bold text-xs truncate text-white">{stamp.name}</div>
+                                    <div className="text-[10px] text-pidgey-muted uppercase mt-1">{stamp.status}</div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
                 </div>
             )}
         </div>

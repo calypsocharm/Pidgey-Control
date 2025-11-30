@@ -62,6 +62,7 @@ export const MOCK_STAMPS: Stamp[] = [
     collection: 'City Birds',
     is_drop_only: false,
     price_eggs: 50,
+    edition_count: 5000,
     art_path: 'https://picsum.photos/seed/pigeon/300/300',
   },
   {
@@ -72,6 +73,7 @@ export const MOCK_STAMPS: Stamp[] = [
     status: StampStatus.ACTIVE,
     collection: 'Synthwave Sky',
     is_drop_only: true,
+    edition_count: 100,
     art_path: 'https://picsum.photos/seed/hawk/300/300',
   },
   {
@@ -82,6 +84,7 @@ export const MOCK_STAMPS: Stamp[] = [
     status: StampStatus.ACTIVE,
     collection: 'Origins',
     is_drop_only: true,
+    edition_count: 10,
     art_path: 'https://picsum.photos/seed/gold/300/300',
   },
 ];

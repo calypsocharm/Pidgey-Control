@@ -1,12 +1,8 @@
 
 import React, { createContext, useContext, useState, PropsWithChildren } from 'react';
+import { CreationDraft } from './types';
 
 export type PidgeyMood = 'idle' | 'thinking' | 'happy' | 'alert';
-
-interface DraftPayload {
-    type: 'DRAFT_DROP' | 'DRAFT_STAMP' | 'DRAFT_PROMO';
-    data: any;
-}
 
 interface PidgeyContextType {
   isOpen: boolean;
@@ -17,9 +13,10 @@ interface PidgeyContextType {
   setMood: (mood: PidgeyMood) => void;
   clearMessage: () => void;
   
-  // Drafting / Actions
-  draftPayload: DraftPayload | null;
-  setDraftPayload: (payload: DraftPayload | null) => void;
+  // Creations / Drafts Repository
+  creations: CreationDraft[];
+  addCreation: (draft: CreationDraft) => void;
+  removeCreation: (id: string) => void;
 
   // Memory / Learning
   memories: string[];
@@ -32,8 +29,10 @@ export const JarvisProvider: React.FC<PropsWithChildren<{}>> = ({ children }) =>
   const [isOpen, setIsOpen] = useState(false);
   const [initialMessage, setInitialMessage] = useState('');
   const [mood, setMood] = useState<PidgeyMood>('idle');
-  const [draftPayload, setDraftPayload] = useState<DraftPayload | null>(null);
   const [memories, setMemories] = useState<string[]>([]);
+  
+  // Centralized Draft Repository
+  const [creations, setCreations] = useState<CreationDraft[]>([]);
 
   const openPidgey = (message: string = '') => {
     if (message) setInitialMessage(message);
@@ -52,6 +51,14 @@ export const JarvisProvider: React.FC<PropsWithChildren<{}>> = ({ children }) =>
     setInitialMessage('');
   };
 
+  const addCreation = (draft: CreationDraft) => {
+      setCreations(prev => [draft, ...prev]);
+  };
+
+  const removeCreation = (id: string) => {
+      setCreations(prev => prev.filter(c => c.id !== id));
+  };
+
   const learn = (fact: string) => {
     if (!memories.includes(fact)) {
         setMemories(prev => [...prev, fact]);
@@ -61,7 +68,7 @@ export const JarvisProvider: React.FC<PropsWithChildren<{}>> = ({ children }) =>
   return (
     <PidgeyContext.Provider value={{ 
         isOpen, mood, setMood, initialMessage, openPidgey, closePidgey, clearMessage,
-        draftPayload, setDraftPayload,
+        creations, addCreation, removeCreation,
         memories, learn
     }}>
       {children}

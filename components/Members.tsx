@@ -1,9 +1,56 @@
 
 import React, { useState, useEffect } from 'react';
-import { Search, Plus, RefreshCw, X, Shield, Star, Ban, Egg, CreditCard, History, Edit2, CheckCircle2, AlertTriangle, Undo2, Save, Lock } from 'lucide-react';
+import { Search, Plus, RefreshCw, X, Shield, Star, Ban, Egg, CreditCard, History, Edit2, CheckCircle2, AlertTriangle, Undo2, Save, Lock, Megaphone, Activity, Ticket, Stamp, Coins, UserCog, CalendarClock } from 'lucide-react';
 import { AdminService } from '../services/adminService';
+import { supabase } from '../services/supabaseClient';
 import { Profile, Role, Tier, Transaction } from '../types';
 import { useSafeMode } from '../SafeModeContext';
+
+// Unified Timeline Event Interface
+interface TimelineEvent {
+    id: string;
+    type: 'transaction' | 'log' | 'ticket' | 'card';
+    date: string;
+    title: string;
+    description?: string;
+    amount?: number;
+    status?: string;
+    meta?: any;
+}
+
+const TimelineItem: React.FC<{ event: TimelineEvent }> = ({ event }) => {
+    const getIcon = () => {
+        switch(event.type) {
+            case 'transaction': return <CreditCard size={14} className="text-green-400" />;
+            case 'ticket': return <Ticket size={14} className="text-yellow-400" />;
+            case 'card': return <Stamp size={14} className="text-purple-400" />;
+            default: return <Activity size={14} className="text-pidgey-muted" />;
+        }
+    };
+    
+    return (
+        <div className="flex gap-4 p-3 hover:bg-pidgey-dark/30 rounded-lg transition group">
+            <div className="flex flex-col items-center">
+                <div className="w-8 h-8 rounded-full bg-pidgey-dark border border-pidgey-border flex items-center justify-center shadow-sm group-hover:border-pidgey-accent transition-colors">
+                    {getIcon()}
+                </div>
+                <div className="w-px h-full bg-pidgey-border/50 my-1 group-last:hidden"></div>
+            </div>
+            <div className="flex-1 pb-4">
+                <div className="flex justify-between items-start">
+                    <span className="font-bold text-sm text-white">{event.title}</span>
+                    <span className="text-[10px] text-pidgey-muted">{new Date(event.date).toLocaleDateString()}</span>
+                </div>
+                {event.description && <p className="text-xs text-pidgey-muted mt-1">{event.description}</p>}
+                {event.amount !== undefined && (
+                    <span className={`text-xs font-mono font-bold ${event.status === 'succeeded' ? 'text-green-400' : 'text-pidgey-muted'}`}>
+                        ${event.amount.toFixed(2)}
+                    </span>
+                )}
+            </div>
+        </div>
+    );
+};
 
 export const Members = () => {
     // List State
@@ -17,14 +64,23 @@ export const Members = () => {
 
     // Player 360 Drawer State
     const [selectedMember, setSelectedMember] = useState<Profile | null>(null);
-    const [activeTab, setActiveTab] = useState<'overview' | 'economy' | 'billing'>('overview');
-    const [transactions, setTransactions] = useState<Transaction[]>([]);
+    const [activeTab, setActiveTab] = useState<'timeline' | 'economy' | 'details'>('timeline');
+    
+    // Aggregated 360 Data
+    const [timeline, setTimeline] = useState<TimelineEvent[]>([]);
+    const [stats, setStats] = useState({
+        lifetimeRevenue: 0,
+        eggsSpent: 0,
+        cardCount: 0
+    });
+    const [loadingDetails, setLoadingDetails] = useState(false);
 
     // Add Member Modal State
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
     const [newMember, setNewMember] = useState<Partial<Profile>>({ role: Role.USER, tier: Tier.FREE, egg_balance: { standard: 3, premium: 0, mystery: 0 }, status: 'active' });
 
-    // Economy Action State
+    // Economy Action State (Issue Eggs)
+    const [isIssueModalOpen, setIsIssueModalOpen] = useState(false);
     const [eggAdjustment, setEggAdjustment] = useState({ amount: 0, type: 'standard' as 'standard'|'premium', reason: '' });
 
     // Debounce search
@@ -45,50 +101,135 @@ export const Members = () => {
 
     const handleMemberClick = async (member: Profile) => {
         setSelectedMember(member);
-        setActiveTab('overview');
-        // Fetch extra details like transactions
-        if (member.id) {
-            const txs = await AdminService.profiles.getTransactions(member.id);
-            setTransactions(txs);
+        setActiveTab('timeline');
+        setLoadingDetails(true);
+
+        // Fetch Complete Profile Data (Timeline, Stats, Logs)
+        const details = await AdminService.profiles.getCompleteProfile(member.id);
+        
+        if (details) {
+            // Merge and Sort Timeline
+            const mergedTimeline: TimelineEvent[] = [];
+
+            // 1. Transactions
+            details.transactions.forEach(t => mergedTimeline.push({
+                id: t.id,
+                type: 'transaction',
+                date: t.created_at,
+                title: t.description,
+                amount: Number(t.amount),
+                status: t.status,
+                description: `Payment ${t.status}`
+            }));
+
+            // 2. Logs
+            details.logs.forEach(l => mergedTimeline.push({
+                id: l.id,
+                type: 'log',
+                date: l.created_at,
+                title: l.action_type || 'System Event',
+                description: l.description
+            }));
+
+            // 3. Tickets
+            details.tickets.forEach(t => mergedTimeline.push({
+                id: t.id,
+                type: 'ticket',
+                date: t.created_at,
+                title: `Ticket: ${t.subject}`,
+                status: t.status,
+                description: `Priority: ${t.priority}`
+            }));
+
+            // 4. Stamps (Cards)
+            details.cards.forEach((c: any) => mergedTimeline.push({
+                id: c.id,
+                type: 'card',
+                date: c.created_at || new Date().toISOString(),
+                title: 'Stamp Acquired',
+                description: 'New asset added to collection'
+            }));
+
+            // Sort descending
+            mergedTimeline.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+            
+            setTimeline(mergedTimeline);
+            setStats(details.stats);
         }
+        setLoadingDetails(false);
     };
 
     const handleAddMember = async () => {
         if (!newMember.email || !newMember.full_name) return alert("Email and Name required");
-        const { data, error } = await AdminService.profiles.create(newMember);
+        
+        console.log("Creating new member:", newMember);
+        
+        // 1. Prepare the data payload
+        const newMemberData = {
+            full_name: newMember.full_name,
+            email: newMember.email,
+            role: newMember.role,
+            tier: newMember.tier,
+            status: newMember.status,
+            egg_balance: newMember.egg_balance,
+            // Generate a secure random ID if the DB doesn't handle it
+            id: `usr_${crypto.randomUUID ? crypto.randomUUID() : Date.now()}`,
+            created_at: new Date().toISOString(),
+            last_seen: new Date().toISOString(),
+        };
+
+        // 2. Execute the Supabase INSERT query
+        const { data, error } = await supabase
+            .from('profiles') // TARGET TABLE: profiles
+            .insert([newMemberData])
+            .select(); // Fetches the newly created record
+        
         if (error) {
-            // Display detailed error to help debugging
-            alert(`Failed to create member: ${error.message || JSON.stringify(error)}\n\nCheck if 'profiles' table exists in Database Settings.`);
+            console.error('Pidgey Chirp! Error creating member:', error);
+            alert(`Failed to create member: ${error.message || JSON.stringify(error)}`);
         } else {
+            console.log('Feathers Up! Member created successfully:', data[0]);
             setIsAddModalOpen(false);
             fetchMembers();
             setNewMember({ role: Role.USER, tier: Tier.FREE, egg_balance: { standard: 3, premium: 0, mystery: 0 }, status: 'active' });
         }
     };
 
-    const handleBan = async () => {
-        if (!selectedMember) return;
-        
-        // SAFE MODE CHECK
-        if (isSafeMode) {
-            const confirmName = prompt(`⚠️ SAFE MODE ENGAGED ⚠️\nTo ban this user, please type their name: ${selectedMember.full_name}`);
-            if (confirmName !== selectedMember.full_name) {
-                alert("Ban cancelled: Name did not match.");
-                return;
-            }
-        }
+    // --- Quick Actions ---
 
-        const reason = prompt("Enter reason for ban/suspension:");
-        if (reason) {
-            await AdminService.profiles.ban(selectedMember.id, reason);
-            // Update local state to show ban
-            setSelectedMember({ ...selectedMember, status: 'banned' });
-            setProfiles(prev => prev.map(p => p.id === selectedMember.id ? { ...p, status: 'banned' as 'banned' } : p));
+    const handleSuspend = async () => {
+        if (!selectedMember) return;
+        if (selectedMember.status === 'suspended') {
+             await AdminService.profiles.update(selectedMember.id, { status: 'active' });
+             setSelectedMember({ ...selectedMember, status: 'active' });
+             alert("Member reactivated.");
+        } else {
+             if (!confirm("Suspend this member? They won't be able to login.")) return;
+             await AdminService.profiles.update(selectedMember.id, { status: 'suspended' });
+             setSelectedMember({ ...selectedMember, status: 'suspended' });
         }
+        fetchMembers();
     };
 
-    const handleAdjustEggs = async () => {
+    const handleToggleTier = async () => {
+        if (!selectedMember) return;
+        const newTier = selectedMember.tier === Tier.FREE ? Tier.PREMIUM : Tier.FREE; // Simplified toggle
+        if (!confirm(`Switch user to ${newTier}?`)) return;
+        
+        await AdminService.profiles.update(selectedMember.id, { tier: newTier });
+        setSelectedMember({ ...selectedMember, tier: newTier });
+        fetchMembers();
+    };
+
+    const handleDraftBroadcast = () => {
+        if (!selectedMember) return;
+        alert(`Draft created for ${selectedMember.email}! (Redirecting to Broadcasts...)`);
+        // In real app: navigate(`/broadcasts?draft_for=${selectedMember.id}`)
+    };
+
+    const handleIssueEggs = async () => {
         if (!selectedMember || eggAdjustment.amount === 0) return;
+        
         await AdminService.profiles.adjustBalance(selectedMember.id, eggAdjustment.amount, eggAdjustment.type, eggAdjustment.reason);
         
         // Update local
@@ -97,22 +238,18 @@ export const Members = () => {
         
         const updatedMember = { ...selectedMember, egg_balance: newBalance };
         setSelectedMember(updatedMember);
-        setProfiles(prev => prev.map(p => p.id === selectedMember.id ? updatedMember : p));
         
+        // Add optimistic log to timeline
+        setTimeline(prev => [{
+            id: 'temp_' + Date.now(),
+            type: 'log',
+            date: new Date().toISOString(),
+            title: 'Admin Adjustment',
+            description: `Adjusted ${eggAdjustment.type} eggs by ${eggAdjustment.amount}`
+        }, ...prev]);
+
         setEggAdjustment({ amount: 0, type: 'standard', reason: '' });
-        alert("Balance Updated");
-    };
-
-    const handleRefund = async (txId: string) => {
-        if (isSafeMode) {
-             const confirmText = prompt(`Type "REFUND" to confirm transaction reversal for ID: ${txId}`);
-             if (confirmText !== "REFUND") return;
-        } else {
-            if (!confirm("Are you sure you want to refund this transaction?")) return;
-        }
-
-        await AdminService.profiles.refundTransaction(txId);
-        setTransactions(prev => prev.map(t => t.id === txId ? { ...t, status: 'refunded' } : t));
+        setIsIssueModalOpen(false);
     };
 
     const getStatusBadge = (status: string | undefined) => {
@@ -129,7 +266,7 @@ export const Members = () => {
     return (
         <div className="flex h-[calc(100vh-8rem)] gap-6 relative">
             {/* LEFT: Member Directory */}
-            <div className={`flex-1 flex flex-col space-y-6 transition-all duration-300 ${selectedMember ? 'w-2/3' : 'w-full'}`}>
+            <div className={`flex-1 flex flex-col space-y-6 transition-all duration-300 ${selectedMember ? 'w-1/2 opacity-50 pointer-events-none md:pointer-events-auto md:opacity-100' : 'w-full'}`}>
                 <div className="flex justify-between items-center">
                     <h1 className="text-2xl font-bold">Members Directory</h1>
                     <div className="flex gap-3">
@@ -183,33 +320,29 @@ export const Members = () => {
                                     >
                                         <td className="px-6 py-4">
                                             <div className="flex items-center gap-3">
-                                                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-pidgey-border to-pidgey-dark flex items-center justify-center text-pidgey-muted font-bold text-xs overflow-hidden">
+                                                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-pidgey-border to-pidgey-dark flex items-center justify-center text-pidgey-muted font-bold text-[10px] overflow-hidden">
                                                     {profile.avatar_url ? <img src={profile.avatar_url} className="w-full h-full object-cover" /> : (profile.full_name ? profile.full_name.substring(0,2).toUpperCase() : '??')}
                                                 </div>
                                                 <div>
-                                                    <div className="font-medium text-pidgey-text">{profile.full_name || 'Unknown'}</div>
+                                                    <div className="font-medium text-sm text-pidgey-text">{profile.full_name || 'Unknown'}</div>
                                                     <div className="text-xs text-pidgey-muted">{profile.email || 'No email'}</div>
                                                 </div>
                                             </div>
                                         </td>
                                         <td className="px-6 py-4">
-                                            <div className="flex items-center gap-2">
-                                                {profile.role === Role.ADMIN && <Shield size={12} className="text-red-400" />}
-                                                <span className="capitalize text-sm">{profile.role}</span>
-                                            </div>
+                                            <span className="capitalize text-xs text-pidgey-muted">{profile.role}</span>
                                         </td>
                                         <td className="px-6 py-4">
-                                            <span className={`px-2 py-1 rounded text-xs font-bold flex w-fit items-center gap-1 ${
+                                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
                                                 profile.tier === Tier.PRO ? 'bg-purple-500/20 text-purple-300' : 
                                                 profile.tier === Tier.PREMIUM ? 'bg-blue-500/20 text-blue-300' : 'bg-slate-700 text-slate-300'
                                             }`}>
-                                                {profile.tier === Tier.PRO && <Star size={10} fill="currentColor" />}
                                                 {profile.tier}
                                             </span>
                                         </td>
                                         <td className="px-6 py-4">
-                                            <div className="flex gap-2 text-xs">
-                                                <span className="bg-slate-700/50 px-1.5 py-0.5 rounded text-slate-300">{profile.egg_balance?.standard ?? 0} S</span>
+                                            <div className="flex gap-2 text-[10px]">
+                                                <span className="bg-slate-700/50 px-1.5 py-0.5 rounded text-slate-300">{profile.egg_balance?.standard ?? 0}</span>
                                                 {(profile.egg_balance?.premium ?? 0) > 0 && <span className="bg-yellow-600/10 px-1.5 py-0.5 rounded text-yellow-500">{profile.egg_balance?.premium} P</span>}
                                             </div>
                                         </td>
@@ -224,184 +357,188 @@ export const Members = () => {
                 </div>
             </div>
 
-            {/* RIGHT: Player 360 Drawer */}
+            {/* RIGHT: ULTIMATE MEMBER PROFILE DRAWER */}
             {selectedMember && (
                 <div className="w-[450px] bg-pidgey-panel border-l border-pidgey-border shadow-2xl flex flex-col animate-in slide-in-from-right duration-300">
-                    {/* Drawer Header */}
+                    
+                    {/* 1. CORE IDENTITY & STATUS */}
                     <div className="p-6 border-b border-pidgey-border bg-pidgey-dark relative">
-                        <button onClick={() => setSelectedMember(null)} className="absolute top-4 right-4 p-1 hover:bg-white/10 rounded">
+                        <button onClick={() => setSelectedMember(null)} className="absolute top-4 right-4 p-1 hover:bg-white/10 rounded text-pidgey-muted hover:text-white">
                             <X size={20} />
                         </button>
-                        <div className="flex items-center gap-4 mb-4">
-                            <div className="w-16 h-16 rounded-full bg-pidgey-border overflow-hidden ring-4 ring-pidgey-panel">
+                        
+                        <div className="flex items-start gap-4 mb-4">
+                            <div className="w-16 h-16 rounded-full bg-pidgey-border overflow-hidden ring-4 ring-pidgey-panel shadow-lg">
                                 <img src={selectedMember.avatar_url || 'https://via.placeholder.com/150'} className="w-full h-full object-cover" />
                             </div>
                             <div>
-                                <h2 className="text-xl font-bold">{selectedMember.full_name}</h2>
-                                <p className="text-pidgey-muted text-sm">{selectedMember.email}</p>
+                                <h2 className="text-xl font-bold text-white">{selectedMember.full_name}</h2>
+                                <p className="text-pidgey-muted text-sm flex items-center gap-1"><span className="select-all">{selectedMember.email}</span></p>
                                 <div className="flex gap-2 mt-2">
                                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
                                         selectedMember.status === 'banned' ? 'bg-red-500 text-white' : 
                                         selectedMember.status === 'suspended' ? 'bg-orange-500 text-white' : 'bg-green-500 text-pidgey-dark'
                                     }`}>{selectedMember.status || 'Active'}</span>
-                                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-pidgey-border text-pidgey-muted">
-                                        ID: {selectedMember.id}
+                                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold bg-pidgey-border text-white`}>
+                                        {selectedMember.tier}
                                     </span>
                                 </div>
                             </div>
                         </div>
-                        
-                        {/* Action Bar */}
-                        <div className="grid grid-cols-2 gap-2">
-                            <button className="flex items-center justify-center gap-2 py-2 bg-pidgey-border hover:bg-pidgey-text hover:text-pidgey-dark rounded text-xs font-bold transition">
-                                <Edit2 size={14} /> Edit Profile
-                            </button>
-                            <button 
-                                onClick={handleBan}
-                                className={`flex items-center justify-center gap-2 py-2 rounded text-xs font-bold transition ${
-                                    isSafeMode ? 'bg-red-900/10 text-red-300' : 'bg-red-600 text-white shadow-lg animate-pulse'
-                                }`}
-                            >
-                                {isSafeMode && <Lock size={12} />}
-                                <Ban size={14} /> {selectedMember.status === 'banned' ? 'Unban User' : 'Ban User'}
-                            </button>
+
+                        {/* ID & Last Active */}
+                        <div className="flex justify-between items-center text-[10px] text-pidgey-muted font-mono bg-black/20 p-2 rounded">
+                            <span>ID: {selectedMember.id}</span>
+                            <span>Seen: {selectedMember.last_seen ? new Date(selectedMember.last_seen).toLocaleDateString() : 'Never'}</span>
+                        </div>
+                    </div>
+
+                    {/* 2. QUICK ACTIONS TOOLBAR */}
+                    <div className="grid grid-cols-4 border-b border-pidgey-border divide-x divide-pidgey-border bg-pidgey-panel">
+                        <button onClick={handleSuspend} className="p-3 hover:bg-white/5 flex flex-col items-center gap-1 text-[10px] font-bold text-pidgey-muted hover:text-red-400 transition">
+                            <Ban size={16} />
+                            {selectedMember.status === 'suspended' ? 'Unsuspend' : 'Suspend'}
+                        </button>
+                        <button onClick={() => setIsIssueModalOpen(true)} className="p-3 hover:bg-white/5 flex flex-col items-center gap-1 text-[10px] font-bold text-pidgey-muted hover:text-yellow-400 transition">
+                            <Egg size={16} />
+                            Issue Eggs
+                        </button>
+                        <button onClick={handleDraftBroadcast} className="p-3 hover:bg-white/5 flex flex-col items-center gap-1 text-[10px] font-bold text-pidgey-muted hover:text-pidgey-accent transition">
+                            <Megaphone size={16} />
+                            Broadcast
+                        </button>
+                        <button onClick={handleToggleTier} className="p-3 hover:bg-white/5 flex flex-col items-center gap-1 text-[10px] font-bold text-pidgey-muted hover:text-blue-400 transition">
+                            <UserCog size={16} />
+                            Toggle Tier
+                        </button>
+                    </div>
+
+                    {/* 3. MONETIZATION & STATS GRID */}
+                    <div className="p-6 border-b border-pidgey-border bg-pidgey-dark/30">
+                        <div className="grid grid-cols-3 gap-4">
+                            <div className="bg-pidgey-panel border border-pidgey-border rounded-lg p-3 text-center">
+                                <div className="text-[10px] font-bold text-pidgey-muted uppercase mb-1">Egg Balance</div>
+                                <div className="text-xl font-bold text-yellow-400">{selectedMember.egg_balance?.standard || 0}</div>
+                                <div className="text-[9px] text-pidgey-muted">{selectedMember.egg_balance?.premium || 0} Premium</div>
+                            </div>
+                            <div className="bg-pidgey-panel border border-pidgey-border rounded-lg p-3 text-center">
+                                <div className="text-[10px] font-bold text-pidgey-muted uppercase mb-1">Lifetime Rev</div>
+                                <div className="text-xl font-bold text-green-400">${stats.lifetimeRevenue.toFixed(0)}</div>
+                                <div className="text-[9px] text-pidgey-muted">{stats.eggsSpent} Eggs Spent</div>
+                            </div>
+                            <div className="bg-pidgey-panel border border-pidgey-border rounded-lg p-3 text-center">
+                                <div className="text-[10px] font-bold text-pidgey-muted uppercase mb-1">Stamps</div>
+                                <div className="text-xl font-bold text-purple-400">{stats.cardCount}</div>
+                                <div className="text-[9px] text-pidgey-muted">Inventory</div>
+                            </div>
                         </div>
                     </div>
 
                     {/* Tabs */}
-                    <div className="flex border-b border-pidgey-border">
-                        <button onClick={() => setActiveTab('overview')} className={`flex-1 py-3 text-sm font-bold border-b-2 transition ${activeTab === 'overview' ? 'border-pidgey-accent text-pidgey-accent' : 'border-transparent text-pidgey-muted'}`}>Overview</button>
-                        <button onClick={() => setActiveTab('economy')} className={`flex-1 py-3 text-sm font-bold border-b-2 transition ${activeTab === 'economy' ? 'border-pidgey-accent text-pidgey-accent' : 'border-transparent text-pidgey-muted'}`}>Economy</button>
-                        <button onClick={() => setActiveTab('billing')} className={`flex-1 py-3 text-sm font-bold border-b-2 transition ${activeTab === 'billing' ? 'border-pidgey-accent text-pidgey-accent' : 'border-transparent text-pidgey-muted'}`}>Billing</button>
+                    <div className="flex border-b border-pidgey-border bg-pidgey-panel">
+                        <button onClick={() => setActiveTab('timeline')} className={`flex-1 py-3 text-xs font-bold uppercase transition ${activeTab === 'timeline' ? 'border-b-2 border-pidgey-accent text-pidgey-accent' : 'text-pidgey-muted hover:text-white'}`}>
+                            Timeline
+                        </button>
+                        <button onClick={() => setActiveTab('details')} className={`flex-1 py-3 text-xs font-bold uppercase transition ${activeTab === 'details' ? 'border-b-2 border-pidgey-accent text-pidgey-accent' : 'text-pidgey-muted hover:text-white'}`}>
+                            Profile Data
+                        </button>
                     </div>
 
-                    {/* Tab Content */}
-                    <div className="flex-1 overflow-y-auto p-6 bg-pidgey-panel">
-                        {activeTab === 'overview' && (
-                            <div className="space-y-6">
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div className="bg-pidgey-dark p-3 rounded-lg border border-pidgey-border">
-                                        <div className="text-xs text-pidgey-muted uppercase font-bold mb-1">Joined</div>
-                                        <div className="font-mono text-sm">{selectedMember.created_at ? new Date(selectedMember.created_at).toLocaleDateString() : '-'}</div>
+                    {/* 4. SINGLE-VIEW TIMELINE */}
+                    <div className="flex-1 overflow-y-auto p-4 bg-pidgey-panel">
+                        {loadingDetails ? (
+                            <div className="text-center py-8 text-pidgey-muted text-xs">Loading complete history...</div>
+                        ) : activeTab === 'timeline' ? (
+                            <div className="space-y-1 relative">
+                                {timeline.length === 0 ? (
+                                    <div className="text-center py-8 text-pidgey-muted">
+                                        <History className="mx-auto mb-2 opacity-20" size={32} />
+                                        <p className="text-xs">No history found for this user.</p>
                                     </div>
-                                    <div className="bg-pidgey-dark p-3 rounded-lg border border-pidgey-border">
-                                        <div className="text-xs text-pidgey-muted uppercase font-bold mb-1">Last Active</div>
-                                        <div className="font-mono text-sm">{selectedMember.last_seen ? new Date(selectedMember.last_seen).toLocaleDateString() : '-'}</div>
-                                    </div>
-                                </div>
-                                
-                                <div>
-                                    <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2"><History size={16}/> Activity Summary</h3>
-                                    <div className="space-y-2">
-                                        <div className="flex justify-between items-center bg-pidgey-dark p-2 rounded">
-                                            <span className="text-sm text-pidgey-muted">Lifetime Sends</span>
-                                            <span className="font-bold">42 Cards</span>
-                                        </div>
-                                        <div className="flex justify-between items-center bg-pidgey-dark p-2 rounded">
-                                            <span className="text-sm text-pidgey-muted">Stamps Collected</span>
-                                            <span className="font-bold">124</span>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className="p-4 bg-yellow-900/10 border border-yellow-700/30 rounded-lg">
-                                    <h4 className="text-xs font-bold text-yellow-500 uppercase mb-2 flex items-center gap-2"><AlertTriangle size={12}/> Admin Notes</h4>
-                                    <p className="text-xs text-pidgey-muted">User reported a bug with mystery eggs on Oct 24th. Compensated 2 eggs.</p>
-                                </div>
+                                ) : (
+                                    <>
+                                        <div className="absolute left-7 top-4 bottom-4 w-px bg-pidgey-border/50 z-0"></div>
+                                        {timeline.map((event) => (
+                                            <TimelineItem key={event.id} event={event} />
+                                        ))}
+                                    </>
+                                )}
                             </div>
-                        )}
-
-                        {activeTab === 'economy' && (
-                            <div className="space-y-6">
-                                <div className="bg-pidgey-dark p-4 rounded-xl border border-pidgey-border text-center">
-                                    <Egg className="mx-auto text-yellow-400 mb-2" size={32} />
-                                    <div className="text-3xl font-bold text-white">{selectedMember.egg_balance?.standard || 0}</div>
-                                    <div className="text-xs text-pidgey-muted uppercase font-bold">Standard Eggs</div>
-                                </div>
-
-                                <div className="bg-pidgey-dark p-4 rounded-xl border border-pidgey-border">
-                                    <h3 className="text-sm font-bold mb-4">Adjust Balance</h3>
-                                    <div className="grid grid-cols-2 gap-2 mb-4">
-                                        <button 
-                                            onClick={() => setEggAdjustment({...eggAdjustment, amount: 1})}
-                                            className={`py-2 rounded border border-pidgey-border text-sm font-bold ${eggAdjustment.amount > 0 ? 'bg-green-500/20 text-green-400 border-green-500' : 'hover:bg-pidgey-panel'}`}
-                                        >
-                                            + Add
-                                        </button>
-                                        <button 
-                                             onClick={() => setEggAdjustment({...eggAdjustment, amount: -1})}
-                                             className={`py-2 rounded border border-pidgey-border text-sm font-bold ${eggAdjustment.amount < 0 ? 'bg-red-500/20 text-red-400 border-red-500' : 'hover:bg-pidgey-panel'}`}
-                                        >
-                                            - Remove
-                                        </button>
-                                    </div>
-                                    
-                                    {eggAdjustment.amount !== 0 && (
-                                        <div className="space-y-3 animate-in slide-in-from-top-2">
-                                            <div>
-                                                <label className="text-xs font-bold text-pidgey-muted block mb-1">Amount</label>
-                                                <input 
-                                                    type="number" 
-                                                    className="w-full bg-pidgey-panel border border-pidgey-border rounded p-2 text-white"
-                                                    value={Math.abs(eggAdjustment.amount)}
-                                                    onChange={(e) => setEggAdjustment({...eggAdjustment, amount: eggAdjustment.amount < 0 ? -Math.abs(Number(e.target.value)) : Math.abs(Number(e.target.value))})}
-                                                />
-                                            </div>
-                                            <div>
-                                                <label className="text-xs font-bold text-pidgey-muted block mb-1">Reason (Audit Log)</label>
-                                                <input 
-                                                    type="text" 
-                                                    placeholder="e.g. Support compensation"
-                                                    className="w-full bg-pidgey-panel border border-pidgey-border rounded p-2 text-white text-sm"
-                                                    value={eggAdjustment.reason}
-                                                    onChange={(e) => setEggAdjustment({...eggAdjustment, reason: e.target.value})}
-                                                />
-                                            </div>
-                                            <button 
-                                                onClick={handleAdjustEggs}
-                                                className="w-full py-2 bg-pidgey-accent text-pidgey-dark font-bold rounded hover:bg-teal-300"
-                                            >
-                                                Confirm Update
-                                            </button>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        )}
-
-                        {activeTab === 'billing' && (
+                        ) : (
                             <div className="space-y-4">
-                                <h3 className="text-sm font-bold flex items-center gap-2"><CreditCard size={16}/> Purchase History</h3>
-                                <div className="space-y-2">
-                                    {transactions.map(tx => (
-                                        <div key={tx.id} className="bg-pidgey-dark border border-pidgey-border p-3 rounded-lg flex justify-between items-center">
-                                            <div>
-                                                <div className="font-bold text-sm">{tx.description}</div>
-                                                <div className="text-xs text-pidgey-muted">{new Date(tx.created_at).toLocaleDateString()}</div>
-                                            </div>
-                                            <div className="text-right">
-                                                <div className={`font-mono text-sm ${tx.status === 'refunded' ? 'text-pidgey-muted line-through' : 'text-white'}`}>
-                                                    ${tx.amount}
-                                                </div>
-                                                {tx.status === 'succeeded' ? (
-                                                    <button 
-                                                        onClick={() => handleRefund(tx.id)}
-                                                        className="text-[10px] text-red-400 hover:underline flex items-center gap-1 mt-1 justify-end"
-                                                    >
-                                                        {isSafeMode && <Lock size={8} />}
-                                                        <Undo2 size={10} /> Refund
-                                                    </button>
-                                                ) : (
-                                                    <span className="text-[10px] text-pidgey-muted uppercase">Refunded</span>
-                                                )}
-                                            </div>
-                                        </div>
-                                    ))}
-                                    {transactions.length === 0 && <p className="text-sm text-pidgey-muted text-center py-4">No transactions found.</p>}
+                                <div className="bg-pidgey-dark p-4 rounded-lg border border-pidgey-border">
+                                    <h4 className="text-xs font-bold text-white uppercase mb-2">Raw Profile Data</h4>
+                                    <pre className="text-[10px] text-pidgey-muted overflow-x-auto">
+                                        {JSON.stringify(selectedMember, null, 2)}
+                                    </pre>
+                                </div>
+                                <div className="bg-pidgey-dark p-4 rounded-lg border border-pidgey-border">
+                                    <h4 className="text-xs font-bold text-white uppercase mb-2">Metadata</h4>
+                                    <div className="grid grid-cols-2 gap-2 text-xs">
+                                        <div className="text-pidgey-muted">Joined</div>
+                                        <div className="text-right">{new Date(selectedMember.created_at || '').toLocaleString()}</div>
+                                        <div className="text-pidgey-muted">Role</div>
+                                        <div className="text-right uppercase">{selectedMember.role}</div>
+                                    </div>
                                 </div>
                             </div>
                         )}
                     </div>
+                </div>
+            )}
+
+            {/* Issue Eggs Modal */}
+            {isIssueModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+                     <div className="bg-pidgey-panel border border-pidgey-border rounded-xl w-full max-w-sm shadow-2xl p-6">
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="font-bold flex items-center gap-2"><Egg className="text-yellow-400" size={18}/> Issue Eggs</h3>
+                            <button onClick={() => setIsIssueModalOpen(false)}><X size={18} className="text-pidgey-muted hover:text-white" /></button>
+                        </div>
+                        <div className="space-y-3">
+                            <div>
+                                <label className="text-xs font-bold text-pidgey-muted block mb-1">Amount</label>
+                                <div className="flex gap-2">
+                                     <button onClick={() => setEggAdjustment({...eggAdjustment, amount: -1})} className="p-2 bg-pidgey-dark border border-pidgey-border rounded text-white hover:bg-pidgey-border">-</button>
+                                     <input 
+                                        type="number" 
+                                        className="flex-1 bg-pidgey-dark border border-pidgey-border rounded p-2 text-white text-center"
+                                        value={eggAdjustment.amount}
+                                        onChange={(e) => setEggAdjustment({...eggAdjustment, amount: parseInt(e.target.value)})}
+                                    />
+                                    <button onClick={() => setEggAdjustment({...eggAdjustment, amount: 1})} className="p-2 bg-pidgey-dark border border-pidgey-border rounded text-white hover:bg-pidgey-border">+</button>
+                                </div>
+                            </div>
+                            <div>
+                                <label className="text-xs font-bold text-pidgey-muted block mb-1">Type</label>
+                                <select 
+                                    className="w-full bg-pidgey-dark border border-pidgey-border rounded p-2 text-white text-sm"
+                                    value={eggAdjustment.type}
+                                    onChange={(e) => setEggAdjustment({...eggAdjustment, type: e.target.value as any})}
+                                >
+                                    <option value="standard">Standard Eggs</option>
+                                    <option value="premium">Premium Eggs</option>
+                                    <option value="mystery">Mystery Eggs</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label className="text-xs font-bold text-pidgey-muted block mb-1">Reason</label>
+                                <input 
+                                    type="text" 
+                                    placeholder="e.g. Support compensation"
+                                    className="w-full bg-pidgey-dark border border-pidgey-border rounded p-2 text-white text-sm"
+                                    value={eggAdjustment.reason}
+                                    onChange={(e) => setEggAdjustment({...eggAdjustment, reason: e.target.value})}
+                                />
+                            </div>
+                            <button 
+                                onClick={handleIssueEggs}
+                                className="w-full py-2 bg-pidgey-accent text-pidgey-dark font-bold rounded hover:bg-teal-300 mt-2"
+                            >
+                                Confirm Issue
+                            </button>
+                        </div>
+                     </div>
                 </div>
             )}
 
