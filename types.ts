@@ -323,3 +323,41 @@ export interface CreationDraft {
   status: 'pending' | 'approved' | 'rejected';
   summary: string;
 }
+
+// --- STUDIO CONFIGURATION TYPES ---
+
+export interface TextConfig {
+    text: string;
+    font: 'font-sans' | 'font-serif' | 'font-mono' | 'font-handwriting';
+    size: number;
+    color: string;
+    shadowColor: string;
+    align: 'text-left' | 'text-center' | 'text-right';
+    posX: number; // Percentage 0-100
+    posY: number; // Percentage 0-100
+}
+
+export interface EffectConfig {
+    type: 'none' | 'snow' | 'rain' | 'confetti' | 'glitch' | 'pulse' | 'holographic';
+    intensity: number;
+}
+
+export interface BorderConfig {
+    enabled: boolean;
+    color: string;
+    thickness: number;
+    style: 'solid' | 'dotted' | 'dashed' | 'double' | 'groove' | 'ridge' | 'perforated';
+    radius: number; // 0-50%
+    glowColor: string;
+    glowIntensity: number; // 0-50px
+    material: 'none' | 'gold' | 'silver' | 'neon' | 'holo' | 'matte';
+    // Inner Frame
+    innerColor: string;
+    innerThickness: number;
+}
+
+export interface ArtConfig {
+    scale: number;
+    x: number;
+    y: number;
+}

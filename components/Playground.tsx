@@ -3,47 +3,15 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Image as ImageIcon, Sparkles, Upload, Save, Loader, RefreshCw, Palette, LayoutTemplate, Plus, Type, Film, X, Square, Copy, Download, Zap, Wand2, Layers, Snowflake, CloudRain, MonitorPlay, Move, ZoomIn, Scaling, FolderOpen, ChevronRight, Bird, Send as SendIcon } from 'lucide-react';
 import { AdminService } from '../services/adminService';
 import { generateImageAsset, generateStampName } from '../services/geminiService';
-import { Stamp, Asset, StampRarity, StampStatus } from '../types';
+import { Stamp, Asset, StampRarity, StampStatus, BorderConfig, TextConfig, EffectConfig, ArtConfig } from '../types';
 import { useLocation } from 'react-router-dom';
 import { useJarvis } from '../JarvisContext';
+import { BorderEditor } from './studio/BorderEditor';
+import { ArtControls } from './studio/ArtControls';
+import { TextEditor } from './studio/TextEditor';
+import { EffectsEditor } from './studio/EffectsEditor';
 
 type StudioMode = 'stamps' | 'templates';
-
-interface TextConfig {
-    text: string;
-    font: 'font-sans' | 'font-serif' | 'font-mono' | 'font-handwriting';
-    size: number;
-    color: string;
-    shadowColor: string;
-    align: 'text-left' | 'text-center' | 'text-right';
-    posX: number; // Percentage 0-100
-    posY: number; // Percentage 0-100
-}
-
-interface EffectConfig {
-    type: 'none' | 'snow' | 'rain' | 'confetti' | 'glitch' | 'pulse' | 'holographic';
-    intensity: number;
-}
-
-interface BorderConfig {
-    enabled: boolean;
-    color: string;
-    thickness: number;
-    style: 'solid' | 'dotted' | 'dashed' | 'double' | 'groove' | 'ridge' | 'perforated';
-    radius: number; // 0-50%
-    glowColor: string;
-    glowIntensity: number; // 0-50px
-    material: 'none' | 'gold' | 'silver' | 'neon' | 'holo' | 'matte';
-    // Inner Frame
-    innerColor: string;
-    innerThickness: number;
-}
-
-interface ArtConfig {
-    scale: number;
-    x: number;
-    y: number;
-}
 
 const STYLE_PRESETS = [
     { id: 'none', label: 'No Style', prompt: '' },
@@ -734,133 +702,12 @@ export const Playground = () => {
 
                                 <div className="h-px bg-pidgey-border" />
                                 
-                                {/* Art Adjustment Controls */}
-                                <div>
-                                    <h3 className="text-xs font-bold text-white uppercase mb-3 flex items-center gap-2"><Scaling size={14} className="text-pidgey-accent"/> Art Adjustment</h3>
-                                    
-                                    <div className="space-y-4">
-                                        <div>
-                                            <div className="flex justify-between items-center mb-1">
-                                                <label className="text-[9px] font-bold text-pidgey-muted uppercase flex items-center gap-1"><ZoomIn size={10}/> Scale</label>
-                                                <span className="text-[9px] font-mono text-white">{artConfig.scale.toFixed(1)}x</span>
-                                            </div>
-                                            <input 
-                                                type="range" min="0.5" max="2.0" step="0.1"
-                                                value={artConfig.scale} 
-                                                onChange={e => setArtConfig({...artConfig, scale: parseFloat(e.target.value)})} 
-                                                className="w-full h-1 bg-pidgey-border rounded-lg appearance-none cursor-pointer accent-pidgey-accent"
-                                            />
-                                        </div>
-                                        <div className="grid grid-cols-2 gap-3">
-                                            <div>
-                                                <label className="text-[9px] font-bold text-pidgey-muted uppercase mb-1 flex items-center gap-1"><Move size={10}/> Pan X</label>
-                                                <input 
-                                                    type="number" 
-                                                    value={artConfig.x} 
-                                                    onChange={e => setArtConfig({...artConfig, x: parseInt(e.target.value)})} 
-                                                    className="w-full bg-pidgey-dark border border-pidgey-border rounded p-1.5 text-xs text-white text-center"
-                                                />
-                                            </div>
-                                            <div>
-                                                <label className="text-[9px] font-bold text-pidgey-muted uppercase mb-1 flex items-center gap-1"><Move size={10} className="rotate-90"/> Pan Y</label>
-                                                 <input 
-                                                    type="number" 
-                                                    value={artConfig.y} 
-                                                    onChange={e => setArtConfig({...artConfig, y: parseInt(e.target.value)})} 
-                                                    className="w-full bg-pidgey-dark border border-pidgey-border rounded p-1.5 text-xs text-white text-center"
-                                                />
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-
+                                <ArtControls config={artConfig} onChange={setArtConfig} />
 
                                 {mode === 'stamps' && (
                                     <>
                                         <div className="h-px bg-pidgey-border" />
-                                        <div>
-                                             <div className="flex justify-between items-center mb-3">
-                                                 <h3 className="text-xs font-bold text-white uppercase flex items-center gap-2"><Square size={14} className="text-pidgey-accent"/> Border Editor</h3>
-                                                 <button 
-                                                    onClick={() => setBorderConfig(prev => ({ ...prev, enabled: !prev.enabled }))}
-                                                    className={`w-8 h-4 rounded-full relative transition-colors ${borderConfig.enabled ? 'bg-pidgey-accent' : 'bg-pidgey-border'}`}
-                                                 >
-                                                     <div className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-all ${borderConfig.enabled ? 'left-4.5' : 'left-0.5'}`}></div>
-                                                 </button>
-                                             </div>
-                                             
-                                             <div className={`space-y-4 ${!borderConfig.enabled ? 'opacity-40 pointer-events-none' : ''}`}>
-                                                 {/* Material Selector */}
-                                                 <div className="grid grid-cols-3 gap-2">
-                                                     {['none', 'matte', 'gold', 'silver', 'neon', 'holo'].map(mat => (
-                                                         <button 
-                                                            key={mat}
-                                                            onClick={() => setBorderConfig({ ...borderConfig, material: mat as any })}
-                                                            className={`text-[9px] font-bold uppercase p-1.5 rounded border text-center transition ${borderConfig.material === mat ? 'bg-pidgey-accent text-pidgey-dark border-pidgey-accent' : 'border-pidgey-border text-pidgey-muted hover:border-white'}`}
-                                                         >
-                                                             {mat}
-                                                         </button>
-                                                     ))}
-                                                 </div>
-
-                                                 <div className="grid grid-cols-2 gap-3">
-                                                     <div>
-                                                         <label className="text-[9px] font-bold text-pidgey-muted uppercase mb-1 block">Color</label>
-                                                         <div className="flex items-center gap-2 bg-pidgey-dark border border-pidgey-border rounded p-1.5">
-                                                            <input type="color" value={borderConfig.color} onChange={e => setBorderConfig({...borderConfig, color: e.target.value})} className="w-5 h-5 rounded cursor-pointer border-none bg-transparent" />
-                                                            <span className="text-[9px] font-mono text-white truncate">{borderConfig.color}</span>
-                                                        </div>
-                                                     </div>
-                                                     <div>
-                                                         <label className="text-[9px] font-bold text-pidgey-muted uppercase mb-1 block">Style</label>
-                                                         <select value={borderConfig.style} onChange={e => setBorderConfig({...borderConfig, style: e.target.value as any})} className="w-full bg-pidgey-dark border border-pidgey-border rounded p-1.5 text-[10px] text-white outline-none">
-                                                            <option value="solid">Solid</option>
-                                                            <option value="perforated">Perforated</option>
-                                                            <option value="dotted">Dotted</option>
-                                                            <option value="dashed">Dashed</option>
-                                                            <option value="double">Double</option>
-                                                        </select>
-                                                     </div>
-                                                 </div>
-
-                                                 <div>
-                                                     <label className="text-[9px] font-bold text-pidgey-muted uppercase mb-1 flex justify-between">
-                                                         <span>Thickness (Padding)</span> <span>{borderConfig.thickness}px</span>
-                                                     </label>
-                                                     <input type="range" min="0" max="40" value={borderConfig.thickness} onChange={e => setBorderConfig({...borderConfig, thickness: parseInt(e.target.value)})} className="w-full h-1 bg-pidgey-border rounded-lg appearance-none cursor-pointer accent-pidgey-accent" />
-                                                 </div>
-                                                 
-                                                 <div>
-                                                     <label className="text-[9px] font-bold text-pidgey-muted uppercase mb-1 flex justify-between">
-                                                         <span>Corner Radius</span> <span>{borderConfig.radius}px</span>
-                                                     </label>
-                                                     <input type="range" min="0" max="160" value={borderConfig.radius} onChange={e => setBorderConfig({...borderConfig, radius: parseInt(e.target.value)})} className="w-full h-1 bg-pidgey-border rounded-lg appearance-none cursor-pointer accent-pidgey-accent" />
-                                                 </div>
-
-                                                 <div>
-                                                     <label className="text-[9px] font-bold text-pidgey-muted uppercase mb-1 flex justify-between">
-                                                         <span>Inner Frame</span> <span>{borderConfig.innerThickness}px</span>
-                                                     </label>
-                                                     <div className="flex gap-2">
-                                                          <div className="flex items-center gap-2 bg-pidgey-dark border border-pidgey-border rounded p-1.5 flex-1">
-                                                             <input type="color" value={borderConfig.innerColor} onChange={e => setBorderConfig({...borderConfig, innerColor: e.target.value})} className="w-5 h-5 rounded cursor-pointer border-none bg-transparent" />
-                                                             <span className="text-[9px] font-mono text-white truncate">{borderConfig.innerColor}</span>
-                                                         </div>
-                                                         <div className="flex-[2]">
-                                                             <input type="range" min="0" max="20" value={borderConfig.innerThickness} onChange={e => setBorderConfig({...borderConfig, innerThickness: parseInt(e.target.value)})} className="w-full h-full bg-pidgey-border rounded-lg appearance-none cursor-pointer accent-pidgey-accent" />
-                                                         </div>
-                                                     </div>
-                                                 </div>
-                                                 
-                                                 <div className="p-3 bg-pidgey-dark rounded-lg border border-pidgey-border">
-                                                     <div className="flex justify-between items-center mb-2">
-                                                         <span className="text-[9px] font-bold text-white uppercase flex items-center gap-1"><Zap size={10} className="text-yellow-400"/> Glow</span>
-                                                         <input type="color" value={borderConfig.glowColor} onChange={e => setBorderConfig({...borderConfig, glowColor: e.target.value})} className="w-4 h-4 rounded cursor-pointer border-none bg-transparent" />
-                                                     </div>
-                                                     <input type="range" min="0" max="50" value={borderConfig.glowIntensity} onChange={e => setBorderConfig({...borderConfig, glowIntensity: parseInt(e.target.value)})} className="w-full h-1 bg-pidgey-border rounded-lg appearance-none cursor-pointer accent-yellow-400" />
-                                                 </div>
-                                             </div>
-                                        </div>
+                                        <BorderEditor config={borderConfig} onChange={setBorderConfig} />
                                     </>
                                 )}
 
@@ -920,116 +767,17 @@ export const Playground = () => {
 
                         {/* TAB: TYPOGRAPHY */}
                         {activeTab === 'text' && (
-                            <div className="space-y-5">
-                                <div className="flex items-center justify-between">
-                                    <h3 className="text-xs font-bold text-white uppercase">Text Overlay</h3>
-                                    <button 
-                                        onClick={() => setShowTextOverlay(!showTextOverlay)}
-                                        className={`w-8 h-4 rounded-full relative transition-colors ${showTextOverlay ? 'bg-pidgey-accent' : 'bg-pidgey-border'}`}
-                                    >
-                                        <div className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-all ${showTextOverlay ? 'left-4.5' : 'left-0.5'}`}></div>
-                                    </button>
-                                </div>
-
-                                <textarea 
-                                    value={textConfig.text}
-                                    onChange={e => setTextConfig({...textConfig, text: e.target.value})}
-                                    className="w-full h-20 bg-pidgey-dark border border-pidgey-border rounded-lg p-3 text-sm focus:border-pidgey-accent outline-none text-white"
-                                    placeholder="Enter text..."
-                                />
-
-                                <div className="grid grid-cols-2 gap-3">
-                                    <div>
-                                        <label className="text-[10px] font-bold text-pidgey-muted uppercase mb-1 block">Font</label>
-                                        <select 
-                                            value={textConfig.font}
-                                            onChange={e => setTextConfig({...textConfig, font: e.target.value as any})}
-                                            className="w-full bg-pidgey-dark border border-pidgey-border rounded p-2 text-xs text-white"
-                                        >
-                                            <option value="font-handwriting">Dancing Script</option>
-                                            <option value="font-sans">Inter Sans</option>
-                                            <option value="font-serif">Merriweather</option>
-                                            <option value="font-mono">JetBrains Mono</option>
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label className="text-[10px] font-bold text-pidgey-muted uppercase mb-1 block">Size</label>
-                                        <input 
-                                            type="number" 
-                                            value={textConfig.size}
-                                            onChange={e => setTextConfig({...textConfig, size: parseInt(e.target.value)})}
-                                            className="w-full bg-pidgey-dark border border-pidgey-border rounded p-2 text-xs text-white"
-                                        />
-                                    </div>
-                                </div>
-
-                                <div className="flex gap-2">
-                                    <div className="flex-1">
-                                        <label className="text-[10px] font-bold text-pidgey-muted uppercase mb-1 block">Color</label>
-                                        <div className="flex items-center gap-2 bg-pidgey-dark border border-pidgey-border rounded p-1.5">
-                                            <input type="color" value={textConfig.color} onChange={e => setTextConfig({...textConfig, color: e.target.value})} className="w-6 h-6 rounded cursor-pointer border-none bg-transparent" />
-                                            <span className="text-[10px] font-mono text-white">{textConfig.color}</span>
-                                        </div>
-                                    </div>
-                                    <div className="flex-1">
-                                        <label className="text-[10px] font-bold text-pidgey-muted uppercase mb-1 block">Shadow</label>
-                                        <div className="flex items-center gap-2 bg-pidgey-dark border border-pidgey-border rounded p-1.5">
-                                            <input type="color" value={textConfig.shadowColor} onChange={e => setTextConfig({...textConfig, shadowColor: e.target.value})} className="w-6 h-6 rounded cursor-pointer border-none bg-transparent" />
-                                            <span className="text-[10px] font-mono text-white">{textConfig.shadowColor}</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
+                            <TextEditor 
+                                config={textConfig} 
+                                onChange={setTextConfig} 
+                                showOverlay={showTextOverlay} 
+                                onToggleOverlay={setShowTextOverlay} 
+                            />
                         )}
 
                         {/* TAB: FX & GIF */}
                         {activeTab === 'fx' && (
-                            <div className="space-y-6">
-                                <div>
-                                    <h3 className="text-xs font-bold text-white uppercase mb-3 flex items-center gap-2"><MonitorPlay size={14} className="text-green-400"/> Animation FX</h3>
-                                    
-                                    <div className="grid grid-cols-2 gap-2">
-                                        {[
-                                            { id: 'none', label: 'None', icon: X },
-                                            { id: 'snow', label: 'Snowfall', icon: Snowflake },
-                                            { id: 'rain', label: 'Rain', icon: CloudRain },
-                                            { id: 'confetti', label: 'Confetti', icon: Sparkles },
-                                            { id: 'glitch', label: 'Glitch', icon: Zap },
-                                            { id: 'pulse', label: 'Pulse', icon: Layers },
-                                            { id: 'holographic', label: 'Holo Foil', icon: Sparkles },
-                                        ].map((fx) => (
-                                            <button
-                                                key={fx.id}
-                                                onClick={() => setEffectConfig({ ...effectConfig, type: fx.id as any })}
-                                                className={`p-3 rounded-lg border flex flex-col items-center justify-center gap-2 transition ${
-                                                    effectConfig.type === fx.id 
-                                                    ? 'bg-pidgey-accent/20 border-pidgey-accent text-pidgey-accent' 
-                                                    : 'bg-pidgey-dark border-pidgey-border text-pidgey-muted hover:text-white hover:border-white/50'
-                                                }`}
-                                            >
-                                                {/* @ts-ignore */}
-                                                <fx.icon size={20} />
-                                                <span className="text-[10px] font-bold uppercase">{fx.label}</span>
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-                                
-                                {effectConfig.type !== 'none' && (
-                                    <div className="bg-pidgey-dark p-3 rounded-lg border border-pidgey-border">
-                                        <div className="flex justify-between items-center mb-2">
-                                            <span className="text-[10px] font-bold text-pidgey-muted uppercase">Effect Intensity</span>
-                                            <span className="text-[10px] font-mono text-white">{effectConfig.intensity}%</span>
-                                        </div>
-                                        <input 
-                                            type="range" min="0" max="100" 
-                                            value={effectConfig.intensity} 
-                                            onChange={e => setEffectConfig({...effectConfig, intensity: parseInt(e.target.value)})} 
-                                            className="w-full h-1 bg-pidgey-border rounded-lg appearance-none cursor-pointer accent-pidgey-accent"
-                                        />
-                                    </div>
-                                )}
-                            </div>
+                            <EffectsEditor config={effectConfig} onChange={setEffectConfig} />
                         )}
 
                     </div>
