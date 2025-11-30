@@ -1,15 +1,19 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Egg, Sparkles, Plus, Edit, Trash2, X, Save, Calendar, Loader, Image as ImageIcon, AlertTriangle, Upload, Search, CheckCircle2, Library, History, Undo2, Tag, Box, ArrowRight } from 'lucide-react';
+import { Egg, Sparkles, Plus, Edit, Trash2, X, Save, Calendar, Loader, Image as ImageIcon, AlertTriangle, Upload, Search, CheckCircle2, Library, History, Undo2, Tag, Box, ArrowRight, Palette, Filter } from 'lucide-react';
 import { AdminService } from '../services/adminService';
 import { Drop, DropStatus, Stamp, StampRarity, StampStatus, Asset } from '../types';
 import { MOCK_STAMPS } from '../constants'; // Fallback for stamps if API fails
 import { useJarvis } from '../JarvisContext';
-import { generateStampName } from '../services/geminiService';
+import { generateStampName, generateFormContent } from '../services/geminiService';
+import { useNavigate } from 'react-router-dom';
 
 export const Drops = () => {
     // View State: 'campaigns' or 'inventory' (Designation Studio)
     const [activeView, setActiveView] = useState<'campaigns' | 'inventory'>('campaigns');
+    
+    // Inventory Filters
+    const [inventoryFilter, setInventoryFilter] = useState<'all' | 'draft' | 'ready'>('all');
     
     // Campaign Data
     const [drops, setDrops] = useState<Drop[]>([]);
@@ -32,8 +36,13 @@ export const Drops = () => {
     const [isDesignationOpen, setIsDesignationOpen] = useState(false);
     const [designatingStamp, setDesignatingStamp] = useState<Stamp | null>(null);
     
+    // AI Filling States
+    const [isFillingDrop, setIsFillingDrop] = useState(false);
+    const [isFillingDesignation, setIsFillingDesignation] = useState(false);
+
     // Context for Pidgey's Drafts
     const { draftPayload, setDraftPayload } = useJarvis();
+    const navigate = useNavigate();
 
     // Check for drafts on mount or when payload changes
     useEffect(() => {
@@ -151,6 +160,24 @@ export const Drops = () => {
         fetchData();
     };
 
+    const handlePidgeyFillDrop = async () => {
+        setIsFillingDrop(true);
+        const data = await generateFormContent('drop');
+        if (data) {
+            setCurrentDrop(prev => ({
+                ...prev,
+                ...data,
+                // Ensure dates are valid
+                start_at: data.start_at || prev.start_at,
+                end_at: data.end_at || prev.end_at,
+                // Defaults
+                status: prev.status || DropStatus.DRAFT,
+                artist_id: prev.artist_id || 'Pidgey Studios'
+            }));
+        }
+        setIsFillingDrop(false);
+    };
+
     // --- Drop Creator: Stamp Selector ---
 
     const toggleStampSelection = (stamp: Stamp) => {
@@ -181,6 +208,23 @@ export const Drops = () => {
         setDesignatingStamp({ ...designatingStamp, name });
     };
 
+    const handlePidgeyFillDesignation = async () => {
+        if (!designatingStamp) return;
+        setIsFillingDesignation(true);
+        const data = await generateFormContent('stamp_designation', { currentName: designatingStamp.name });
+        if (data) {
+            setDesignatingStamp(prev => ({
+                ...prev!,
+                name: data.name,
+                collection: data.collection,
+                price_eggs: data.price_eggs,
+                edition_count: data.edition_count,
+                rarity: Object.values(StampRarity).includes(data.rarity) ? data.rarity : prev!.rarity
+            }));
+        }
+        setIsFillingDesignation(false);
+    };
+
     const finalizeDesignation = async () => {
         if (!designatingStamp || !designatingStamp.id) return;
         
@@ -202,7 +246,9 @@ export const Drops = () => {
             // Update local state
             setInventoryStamps(prev => prev.map(s => s.id === designatingStamp.id ? { ...s, status: StampStatus.READY, name: designatingStamp.name, edition_count: designatingStamp.edition_count } : s));
             setIsDesignationOpen(false);
-            // alert("Stamp Finalized and added to Ready Inventory!");
+            
+            // Explicit Success Feedback
+            alert(`✅ Stamp "${designatingStamp.name}" is now READY!\n\nIt can now be selected when building a Drop Campaign.`);
         }
     };
 
@@ -220,12 +266,18 @@ export const Drops = () => {
 
     const getStatusBadge = (status: StampStatus) => {
         switch(status) {
-            case StampStatus.DRAFT: return <span className="text-[9px] bg-slate-700 text-slate-300 px-1.5 rounded uppercase font-bold">Draft</span>;
-            case StampStatus.READY: return <span className="text-[9px] bg-green-500 text-white px-1.5 rounded uppercase font-bold">Ready</span>;
+            case StampStatus.DRAFT: return <span className="text-[9px] bg-slate-700 text-slate-300 px-1.5 rounded uppercase font-bold border border-slate-600">Draft (Incomplete)</span>;
+            case StampStatus.READY: return <span className="text-[9px] bg-green-500 text-pidgey-dark px-1.5 rounded uppercase font-bold flex items-center gap-1"><CheckCircle2 size={10}/> Ready</span>;
             case StampStatus.ACTIVE: return <span className="text-[9px] bg-purple-500 text-white px-1.5 rounded uppercase font-bold">Active</span>;
             default: return null;
         }
     }
+
+    // Filter Logic
+    const filteredStamps = inventoryStamps.filter(s => {
+        if (inventoryFilter === 'all') return true;
+        return s.status === inventoryFilter;
+    });
 
     return (
         <div className="space-y-8">
@@ -340,32 +392,64 @@ export const Drops = () => {
                                 <h2 className="text-lg font-bold text-white flex items-center gap-2">
                                     <Box size={20} className="text-pidgey-accent" /> Stamp Inventory
                                 </h2>
-                                <p className="text-xs text-pidgey-muted">Manage DRAFT stamps and finalize them for Drops.</p>
+                                <p className="text-xs text-pidgey-muted">Manage stamps and finalize their supply/price for Drops.</p>
                             </div>
-                            <button onClick={fetchData} className="text-pidgey-muted hover:text-white"><Undo2 size={16}/></button>
+                            
+                            {/* Filter Controls */}
+                            <div className="flex gap-2 bg-pidgey-dark p-1 rounded-lg border border-pidgey-border">
+                                <button 
+                                    onClick={() => setInventoryFilter('all')}
+                                    className={`px-3 py-1 text-[10px] font-bold uppercase rounded transition-colors ${inventoryFilter === 'all' ? 'bg-pidgey-panel text-white shadow-sm' : 'text-pidgey-muted hover:text-white'}`}
+                                >
+                                    All
+                                </button>
+                                <button 
+                                    onClick={() => setInventoryFilter('draft')}
+                                    className={`px-3 py-1 text-[10px] font-bold uppercase rounded transition-colors flex items-center gap-1 ${inventoryFilter === 'draft' ? 'bg-pidgey-panel text-white shadow-sm' : 'text-pidgey-muted hover:text-white'}`}
+                                >
+                                    <div className="w-1.5 h-1.5 rounded-full bg-slate-500"></div> Action Needed
+                                </button>
+                                <button 
+                                    onClick={() => setInventoryFilter('ready')}
+                                    className={`px-3 py-1 text-[10px] font-bold uppercase rounded transition-colors flex items-center gap-1 ${inventoryFilter === 'ready' ? 'bg-green-500/20 text-green-400 shadow-sm' : 'text-pidgey-muted hover:text-green-400'}`}
+                                >
+                                    <div className="w-1.5 h-1.5 rounded-full bg-green-500"></div> Ready
+                                </button>
+                            </div>
+
+                            <button onClick={fetchData} className="text-pidgey-muted hover:text-white ml-2"><Undo2 size={16}/></button>
                         </div>
                         
                         {loading ? (
                             <div className="py-12 text-center text-pidgey-muted">Loading inventory...</div>
-                        ) : inventoryStamps.length === 0 ? (
+                        ) : filteredStamps.length === 0 ? (
                             <div className="border-2 border-dashed border-pidgey-border rounded-xl p-12 text-center text-pidgey-muted">
                                 <ImageIcon size={48} className="mx-auto mb-4 opacity-20"/>
-                                <p>No stamps found.</p>
+                                <p>No stamps found matching filter.</p>
                                 <p className="text-xs mt-2">Go to Playground to create new assets.</p>
                             </div>
                         ) : (
                             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
-                                {inventoryStamps.map(stamp => (
+                                {filteredStamps.map(stamp => (
                                     <div 
                                         key={stamp.id} 
                                         onClick={() => openDesignation(stamp)}
-                                        className="bg-pidgey-dark border border-pidgey-border rounded-xl p-3 cursor-pointer hover:border-pidgey-accent hover:-translate-y-1 transition-all group"
+                                        className={`bg-pidgey-dark border rounded-xl p-3 cursor-pointer hover:-translate-y-1 transition-all group ${
+                                            stamp.status === StampStatus.READY 
+                                            ? 'border-green-500/30 hover:border-green-500' 
+                                            : 'border-pidgey-border hover:border-pidgey-accent'
+                                        }`}
                                     >
                                         <div className="aspect-[3/4] bg-pidgey-panel rounded-lg mb-3 flex items-center justify-center overflow-hidden relative">
                                             {stamp.art_path ? <img src={stamp.art_path} className="w-full h-full object-contain p-2" /> : <ImageIcon size={24} className="opacity-20"/>}
                                             <div className="absolute inset-0 bg-pidgey-accent/20 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
-                                                <span className="bg-pidgey-accent text-pidgey-dark text-[10px] font-bold px-2 py-1 rounded">EDIT METADATA</span>
+                                                <span className="bg-pidgey-accent text-pidgey-dark text-[10px] font-bold px-2 py-1 rounded shadow-lg">EDIT METADATA</span>
                                             </div>
+                                            {stamp.status === StampStatus.READY && (
+                                                <div className="absolute top-1 right-1 bg-green-500 text-pidgey-dark p-0.5 rounded-full shadow-md">
+                                                    <CheckCircle2 size={10} />
+                                                </div>
+                                            )}
                                         </div>
                                         <div className="font-bold text-xs truncate text-white" title={stamp.name}>{stamp.name}</div>
                                         <div className="flex justify-between items-center mt-1">
@@ -375,7 +459,7 @@ export const Drops = () => {
                                         {stamp.edition_count ? (
                                              <div className="mt-1 text-[9px] text-pidgey-muted">Supply: {stamp.edition_count}</div>
                                         ) : (
-                                            <div className="mt-1 text-[9px] text-pidgey-muted">Supply: -</div>
+                                            <div className="mt-1 text-[9px] text-red-400 font-bold animate-pulse">Set Supply!</div>
                                         )}
                                     </div>
                                 ))}
@@ -390,7 +474,7 @@ export const Drops = () => {
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
                     <div className="bg-pidgey-panel border border-pidgey-border rounded-2xl w-full max-w-4xl shadow-2xl overflow-hidden flex flex-col md:flex-row h-[600px] animate-in zoom-in-95 duration-200">
                         {/* Left: Preview */}
-                        <div className="w-full md:w-1/3 bg-pidgey-dark p-8 flex items-center justify-center border-b md:border-b-0 md:border-r border-pidgey-border relative">
+                        <div className="w-full md:w-1/3 bg-pidgey-dark p-8 flex items-center justify-center border-b md:border-b-0 md:border-r border-pidgey-border relative flex-col gap-4">
                             <div className="relative w-full aspect-[3/4] bg-pidgey-panel rounded-xl flex items-center justify-center shadow-2xl border-4 border-dotted border-pidgey-border">
                                 <img src={designatingStamp.art_path} className="w-full h-full object-contain p-4" />
                                 {/* Overlay Stats */}
@@ -399,13 +483,31 @@ export const Drops = () => {
                                     <div className={`text-[10px] uppercase font-bold mt-1 inline-block px-2 rounded ${getRarityColor(designatingStamp.rarity)}`}>{designatingStamp.rarity}</div>
                                 </div>
                             </div>
+                            
+                            {/* Playground Bridge */}
+                            <button 
+                                onClick={() => navigate('/playground', { state: { loadStamp: designatingStamp } })}
+                                className="w-full py-2 bg-pidgey-panel border border-pidgey-border hover:border-pidgey-accent text-pidgey-muted hover:text-white rounded-lg text-xs font-bold uppercase transition flex items-center justify-center gap-2 group"
+                            >
+                                <Palette size={14} className="group-hover:text-pidgey-accent" /> Adjust Art in Studio
+                            </button>
                         </div>
 
                         {/* Right: Form */}
                         <div className="flex-1 p-8 overflow-y-auto">
                             <div className="flex justify-between items-center mb-6">
                                 <div>
-                                    <h2 className="text-xl font-bold">Stamp Designation</h2>
+                                    <h2 className="text-xl font-bold flex items-center gap-2">
+                                        Stamp Designation
+                                        <button 
+                                            onClick={handlePidgeyFillDesignation}
+                                            disabled={isFillingDesignation}
+                                            className="text-xs flex items-center gap-1 text-pidgey-accent bg-pidgey-accent/10 hover:bg-pidgey-accent/20 px-2 py-1 rounded transition ml-2"
+                                        >
+                                            <Sparkles size={12} className={isFillingDesignation ? "animate-spin" : ""} />
+                                            Pidgey Fill
+                                        </button>
+                                    </h2>
                                     <p className="text-xs text-pidgey-muted">Define metadata to finalize this asset.</p>
                                 </div>
                                 <button onClick={() => setIsDesignationOpen(false)} className="p-2 hover:bg-white/10 rounded-full"><X size={20}/></button>
@@ -513,6 +615,14 @@ export const Drops = () => {
                                 <h2 className="text-xl font-bold flex items-center gap-2">
                                     {currentDrop.id ? 'Edit Campaign' : 'New Drop Campaign'}
                                     {draftPayload && <span className="text-xs bg-pidgey-accent/20 text-pidgey-accent px-2 py-0.5 rounded-full">AI Draft</span>}
+                                    <button 
+                                        onClick={handlePidgeyFillDrop}
+                                        disabled={isFillingDrop}
+                                        className="text-xs flex items-center gap-1 text-pidgey-accent bg-pidgey-accent/10 hover:bg-pidgey-accent/20 px-2 py-1 rounded transition ml-2 border border-pidgey-accent/30"
+                                    >
+                                        <Sparkles size={12} className={isFillingDrop ? "animate-spin" : ""} />
+                                        Auto-Fill with Pidgey
+                                    </button>
                                 </h2>
                                 <p className="text-xs text-pidgey-muted">Configure campaign details and select assets.</p>
                             </div>

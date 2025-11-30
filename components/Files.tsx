@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { FolderOpen, Image as ImageIcon, FileText, Grid, List, Download, Trash2, Search, Upload, Sparkles, Loader, Plus, X, Save, Tag, RefreshCw, AlertTriangle, Database, Terminal } from 'lucide-react';
 import { AdminService } from '../services/adminService';
-import { generateTagsForAsset } from '../services/geminiService';
+import { generateTagsForAsset, generateFormContent } from '../services/geminiService';
 import { migrateAssets } from '../services/assetMigration';
 import { Asset, AssetType, Stamp, StampRarity, StampStatus } from '../types';
 import { useSafeMode } from '../SafeModeContext';
@@ -116,6 +116,7 @@ export const Files = () => {
     // Stamp Creation State
     const [isStampModalOpen, setIsStampModalOpen] = useState(false);
     const [isUploadingArt, setIsUploadingArt] = useState(false);
+    const [isFilling, setIsFilling] = useState(false);
     const [newStamp, setNewStamp] = useState<Partial<Stamp>>({
         rarity: StampRarity.COMMON,
         status: StampStatus.ACTIVE,
@@ -270,6 +271,20 @@ export const Files = () => {
         console.log("Creating stamp:", stampPayload);
         setIsStampModalOpen(false);
         alert(`Stamp "${newStamp.name}" created! (Check Drops & Stamps page)`);
+    };
+
+    const handlePidgeyFill = async () => {
+        setIsFilling(true);
+        const data = await generateFormContent('stamp_creation');
+        if (data) {
+            setNewStamp(prev => ({
+                ...prev,
+                ...data,
+                // Ensure Enums
+                rarity: Object.values(StampRarity).includes(data.rarity) ? data.rarity : StampRarity.COMMON
+            }));
+        }
+        setIsFilling(false);
     };
 
     return (
@@ -435,6 +450,14 @@ export const Files = () => {
                         <div className="flex justify-between items-center mb-6">
                             <h2 className="text-xl font-bold flex items-center gap-2">
                                 <Tag size={20} className="text-pidgey-secondary" /> Create New Stamp
+                                <button 
+                                    onClick={handlePidgeyFill}
+                                    disabled={isFilling}
+                                    className="text-xs flex items-center gap-1 text-pidgey-accent bg-pidgey-accent/10 hover:bg-pidgey-accent/20 px-2 py-1 rounded transition ml-2 border border-pidgey-accent/30"
+                                >
+                                    <Sparkles size={12} className={isFilling ? "animate-spin" : ""} />
+                                    Auto-Fill
+                                </button>
                             </h2>
                             <button onClick={() => setIsStampModalOpen(false)} className="text-pidgey-muted hover:text-white"><X size={20}/></button>
                         </div>

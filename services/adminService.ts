@@ -373,29 +373,33 @@ export const AdminService = {
     }
   },
 
-  // --- Broadcasts (Hybrid) ---
+  // --- Broadcasts (Real DB) ---
   broadcasts: {
     list: async (): Promise<ListResponse<Broadcast>> => {
-       const { data, error, count } = await supabase.from('broadcasts').select('*', { count: 'exact' });
-       if (error) {
-           return { data: [], count: 0, error: null }; // No mock fallback
-       }
+       const { data, error, count } = await supabase.from('broadcasts').select('*', { count: 'exact' }).order('created_at', { ascending: false });
        return { data: (data as unknown as Broadcast[]) || [], count: count || 0, error };
     },
     create: async (payload: Partial<Broadcast>) => {
-        console.log("Creating broadcast", payload);
-        return { data: { ...payload, id: 'bc_new_' + Date.now() } as Broadcast, error: null };
+        // Remove draft ID if present, let Supabase generate UUID
+        if (payload.id && String(payload.id).startsWith('draft_')) delete payload.id;
+        
+        const { data, error } = await supabase.from('broadcasts').insert(payload).select().single();
+        return { data: data as Broadcast, error };
     }
   },
 
-  // --- Promos (Hybrid) ---
+  // --- Promos (Real DB) ---
   promos: {
     list: async (): Promise<ListResponse<Promo>> => {
-       const { data, error, count } = await supabase.from('promos').select('*', { count: 'exact' });
-       if (error) {
-           return { data: [], count: 0, error: null }; // No mock fallback
-       }
+       const { data, error, count } = await supabase.from('promos').select('*', { count: 'exact' }).order('created_at', { ascending: false });
        return { data: (data as unknown as Promo[]) || [], count: count || 0, error };
+    },
+    create: async (payload: Partial<Promo>) => {
+        // Remove draft ID if present
+        if (payload.id && String(payload.id).startsWith('draft_')) delete payload.id;
+        
+        const { data, error } = await supabase.from('promos').insert(payload).select().single();
+        return { data: data as Promo, error };
     }
   },
 
@@ -461,11 +465,13 @@ export const AdminService = {
         }
     },
 
-    upload: async (file: File, bucket: string) => {
+    upload: async (file: File, bucket: string, folder?: string) => {
         // Sanitize filename to prevent future issues
         const fileExt = file.name.split('.').pop();
         const cleanName = file.name.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
-        const fileName = `${Date.now()}_${cleanName}.${fileExt}`;
+        const rawFileName = `${Date.now()}_${cleanName}.${fileExt}`;
+        // Prepend folder if provided
+        const fileName = folder ? `${folder}/${rawFileName}` : rawFileName;
         
         try {
             const { data, error } = await supabase.storage
@@ -495,7 +501,7 @@ export const AdminService = {
         }
     },
 
-    uploadBase64: async (base64Data: string, bucket: string) => {
+    uploadBase64: async (base64Data: string, bucket: string, folder?: string) => {
         try {
             // Convert base64 to Blob
             const byteCharacters = atob(base64Data);
@@ -506,7 +512,9 @@ export const AdminService = {
             const byteArray = new Uint8Array(byteNumbers);
             const blob = new Blob([byteArray], { type: 'image/png' });
 
-            const fileName = `gen_ai_${Date.now()}.png`;
+            const rawFileName = `gen_ai_${Date.now()}.png`;
+            // Prepend folder if provided
+            const fileName = folder ? `${folder}/${rawFileName}` : rawFileName;
             
             const { data, error } = await supabase.storage
                 .from(bucket)

@@ -1,8 +1,9 @@
 
 import React, { useState, useEffect } from 'react';
-import { Megaphone, Calendar, Send, Mail, Smartphone, Bell, Plus, RefreshCw, BarChart2, X, Save, Clock, Users, History, Undo2 } from 'lucide-react';
+import { Megaphone, Calendar, Send, Mail, Smartphone, Bell, Plus, RefreshCw, BarChart2, X, Save, Clock, Users, History, Undo2, Sparkles } from 'lucide-react';
 import { AdminService } from '../services/adminService';
 import { Broadcast, BroadcastStatus, BroadcastChannel } from '../types';
+import { generateFormContent } from '../services/geminiService';
 
 export const Broadcasts = () => {
     const [broadcasts, setBroadcasts] = useState<Broadcast[]>([]);
@@ -12,6 +13,7 @@ export const Broadcasts = () => {
     // Modal State
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [currentBroadcast, setCurrentBroadcast] = useState<Partial<Broadcast>>({});
+    const [isFilling, setIsFilling] = useState(false);
 
     useEffect(() => {
         fetchData();
@@ -53,6 +55,18 @@ export const Broadcasts = () => {
             if (data) setBroadcasts(prev => [data, ...prev]);
             setIsModalOpen(false);
         }
+    };
+
+    const handlePidgeyFill = async () => {
+        setIsFilling(true);
+        const data = await generateFormContent('broadcast');
+        if (data) {
+            setCurrentBroadcast(prev => ({
+                ...prev,
+                ...data
+            }));
+        }
+        setIsFilling(false);
     };
 
     const handleRevertToDraft = () => {
@@ -234,6 +248,14 @@ export const Broadcasts = () => {
                                 <h2 className="text-xl font-bold flex items-center gap-2">
                                     <Megaphone size={20} className="text-pidgey-secondary" />
                                     {currentBroadcast.id ? 'Edit Broadcast' : 'New Broadcast'}
+                                    <button 
+                                        onClick={handlePidgeyFill}
+                                        disabled={isFilling}
+                                        className="text-xs flex items-center gap-1 text-pidgey-accent bg-pidgey-accent/10 hover:bg-pidgey-accent/20 px-2 py-1 rounded transition ml-2 border border-pidgey-accent/30"
+                                    >
+                                        <Sparkles size={12} className={isFilling ? "animate-spin" : ""} />
+                                        Auto-Fill
+                                    </button>
                                 </h2>
                                 <p className="text-xs text-pidgey-muted">Create a new message blast to your users.</p>
                             </div>

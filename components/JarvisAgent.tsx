@@ -1,12 +1,13 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Send, Bird, Sparkles, RefreshCw, CheckCircle2, ArrowRight, ExternalLink } from 'lucide-react';
+import { X, Send, Bird, Sparkles, RefreshCw, CheckCircle2, ArrowRight, ExternalLink, Plus, Egg, Megaphone, StickyNote, User, Palette } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { getPidgeyDailyBrief, chatWithPidgey, generateImageAsset } from '../services/geminiService';
+import { getPidgeyDailyBrief, chatWithPidgey, generateImageAsset, generateStampName } from '../services/geminiService';
 import { ChatMessage, CreationDraft } from '../types';
 import { useJarvis } from '../JarvisContext';
 import { PUBLIC_SCHEMA_DDL } from '../schema';
 import { AdminService } from '../services/adminService';
+import { supabase } from '../services/supabaseClient';
 
 export const JarvisAgent: React.FC = () => {
     const { isOpen, closePidgey, initialMessage, clearMessage, mood, setMood, memories, learn, addCreation } = useJarvis();
@@ -23,14 +24,21 @@ export const JarvisAgent: React.FC = () => {
     const location = useLocation();
     const navigate = useNavigate();
 
+    // Draft Menu State
+    const [showDraftMenu, setShowDraftMenu] = useState(false);
+
     // Construct Context for AI using REAL Data
     const getSystemContext = async () => {
         const realData = await AdminService.pidgey.getRealContext();
+        
+        // Fetch Stamp Inventory (Ready/Draft stamps) for Drop Creation logic
+        const { data: inventory } = await supabase.from('stamps').select('*').in('status', ['ready', 'draft']);
 
         return {
             schema: PUBLIC_SCHEMA_DDL,
             currentPage: location.pathname,
             ...realData, // tickets, activeDrops, operational stats, promos, broadcasts
+            inventory: inventory || [],
             memories: memories // Pass learned facts
         };
     };
@@ -73,6 +81,7 @@ export const JarvisAgent: React.FC = () => {
         if (!msgText.trim()) return;
 
         if (msgText === input) setInput('');
+        setShowDraftMenu(false); // Close menu if open
 
         const userMsg: ChatMessage = {
             id: Date.now().toString(),
@@ -108,9 +117,31 @@ export const JarvisAgent: React.FC = () => {
             try {
                 const rawPayload = JSON.parse(actionMatch[1]);
                 
-                // --- VISUAL ASSET GENERATION FOR STAMPS ---
+                // --- VISUAL ASSET GENERATION & NAMING FOR STAMPS ---
                 // If Pidgey drafted a stamp but didn't provide a real URL, generate one now.
                 if (rawPayload.type === 'stamp') {
+                    
+                    // 1. Auto-Name using Pidgey's specialized naming logic
+                    // If the name is generic or missing, give it a creative boost
+                    try {
+                        const creativeName = await generateStampName({
+                            rarity: rawPayload.data.rarity || 'common',
+                            material: rawPayload.data.design_config?.border?.material || 'none',
+                            style: rawPayload.data.design_config?.border?.style || 'perforated',
+                            visualPrompt: rawPayload.data.name || rawPayload.data.description || "A stamp"
+                        });
+                        
+                        // Use the generated name
+                        if (creativeName) {
+                            rawPayload.data.name = creativeName;
+                            // Update summary to reflect new name
+                            rawPayload.summary = `New Stamp: ${creativeName}`; 
+                        }
+                    } catch (e) {
+                        console.error("Auto-naming failed:", e);
+                    }
+
+                    // 2. Art Generation
                     const hasValidArt = rawPayload.data.art_path && rawPayload.data.art_path.startsWith('http');
                     
                     if (!hasValidArt) {
@@ -121,12 +152,14 @@ export const JarvisAgent: React.FC = () => {
                             timestamp: new Date()
                         }]);
 
-                        const visualPrompt = `Iconic stamp art for "${rawPayload.data.name}", ${rawPayload.data.rarity || 'common'} rarity, vector style, white background, centered`;
+                        // Enforce "Full Bleed" style
+                        const visualPrompt = `Full bleed stamp art for "${rawPayload.data.name}", ${rawPayload.data.rarity || 'common'} rarity, highly detailed, filling the entire frame, vector style, no borders`;
                         
                         try {
                             const base64Art = await generateImageAsset(visualPrompt);
                             if (base64Art) {
-                                const { data: uploadData, error: uploadError } = await AdminService.files.uploadBase64(base64Art, 'stamps');
+                                // Upload to public_stamps folder
+                                const { data: uploadData, error: uploadError } = await AdminService.files.uploadBase64(base64Art, 'stamps', 'public_stamps');
                                 if (uploadData && uploadData.url) {
                                     rawPayload.data.art_path = uploadData.url;
                                 } else {
@@ -196,6 +229,11 @@ export const JarvisAgent: React.FC = () => {
         closePidgey();
     };
 
+    const handleQuickAction = (action: string) => {
+        // Trigger generic Pidgey requests via buttons
+        handleSendMessage(action);
+    };
+
     if (!isOpen) return null;
 
     return (
@@ -212,7 +250,7 @@ export const JarvisAgent: React.FC = () => {
                     </div>
                     <div>
                         <h3 className="font-bold text-white text-lg leading-none">Pidgey</h3>
-                        <span className="text-[11px] text-pidgey-muted font-medium">Ops Copilot v3.1 (Action-Mode)</span>
+                        <span className="text-[11px] text-pidgey-muted font-medium">Ops Copilot v4.0 (Dreamy)</span>
                     </div>
                 </div>
                 <button onClick={closePidgey} className="p-2 hover:bg-white/5 rounded-full text-pidgey-muted hover:text-white transition-colors">
@@ -278,6 +316,22 @@ export const JarvisAgent: React.FC = () => {
                 ) : (
                     <div className="flex flex-col h-full">
                         <div className="flex-1 p-4 space-y-4">
+                            {/* Quick Actions Chips (Empty State) */}
+                            {messages.length === 1 && (
+                                <div className="flex flex-wrap gap-2 mb-4 justify-center">
+                                    <p className="w-full text-center text-xs text-pidgey-muted mb-2">Start with a draft:</p>
+                                    <button onClick={() => handleQuickAction("Draft a new stamp")} className="px-3 py-1.5 bg-pidgey-panel hover:bg-pidgey-accent/20 border border-pidgey-border hover:border-pidgey-accent rounded-full text-xs font-medium transition-colors text-pidgey-muted hover:text-white flex items-center gap-1">
+                                        <Palette size={12}/> Stamp
+                                    </button>
+                                    <button onClick={() => handleQuickAction("Create a new drop")} className="px-3 py-1.5 bg-pidgey-panel hover:bg-pidgey-accent/20 border border-pidgey-border hover:border-pidgey-accent rounded-full text-xs font-medium transition-colors text-pidgey-muted hover:text-white flex items-center gap-1">
+                                        <Egg size={12}/> Drop
+                                    </button>
+                                    <button onClick={() => handleQuickAction("Draft a broadcast")} className="px-3 py-1.5 bg-pidgey-panel hover:bg-pidgey-accent/20 border border-pidgey-border hover:border-pidgey-accent rounded-full text-xs font-medium transition-colors text-pidgey-muted hover:text-white flex items-center gap-1">
+                                        <Megaphone size={12}/> Broadcast
+                                    </button>
+                                </div>
+                            )}
+
                             {messages.map((msg) => (
                                 <div key={msg.id} className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
                                     <div className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
@@ -306,12 +360,18 @@ export const JarvisAgent: React.FC = () => {
                                             <div className="flex items-start gap-3">
                                                 {msg.action.type === 'stamp' && msg.action.data.art_path && (
                                                     <div className="w-16 h-20 bg-black/20 rounded-md overflow-hidden flex-shrink-0 border border-pidgey-border">
-                                                        <img src={msg.action.data.art_path} className="w-full h-full object-contain" alt="Preview" />
+                                                        <img src={msg.action.data.art_path} className="w-full h-full object-cover" alt="Preview" />
+                                                    </div>
+                                                )}
+                                                {/* Drop Banner Preview */}
+                                                {msg.action.type === 'drop' && msg.action.data.banner_path && (
+                                                    <div className="w-20 h-12 bg-black/20 rounded-md overflow-hidden flex-shrink-0 border border-pidgey-border">
+                                                        <img src={msg.action.data.banner_path} className="w-full h-full object-cover" alt="Banner" />
                                                     </div>
                                                 )}
                                                 <div>
                                                     <p className="text-sm font-bold mb-1 text-white capitalize">
-                                                        {msg.action.type}: {msg.action.summary}
+                                                        {msg.action.summary}
                                                     </p>
                                                     <p className="text-xs text-pidgey-muted mb-3">
                                                         I've sent this to your Creations Tab for final approval.
@@ -344,23 +404,75 @@ export const JarvisAgent: React.FC = () => {
                         </div>
                         
                         {/* Input Area */}
-                        <div className="p-4 bg-pidgey-panel border-t border-pidgey-border">
-                            <div className="relative">
-                                <input 
-                                    type="text" 
-                                    value={input}
-                                    onChange={(e) => setInput(e.target.value)}
-                                    onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
-                                    placeholder="Ask Pidgey to create a drop, broadcast, or promo..."
-                                    className="w-full bg-pidgey-dark border border-pidgey-border rounded-xl pl-4 pr-12 py-3 text-sm focus:outline-none focus:border-pidgey-accent focus:ring-1 focus:ring-pidgey-accent text-white placeholder-pidgey-muted transition-all"
-                                />
+                        <div className="p-4 bg-pidgey-panel border-t border-pidgey-border relative">
+                            {/* Draft Menu Popover */}
+                            {showDraftMenu && (
+                                <div className="absolute bottom-full left-4 mb-2 bg-pidgey-dark border border-pidgey-border rounded-xl shadow-2xl p-2 w-64 animate-in slide-in-from-bottom-2 fade-in z-20">
+                                    <div className="text-[10px] uppercase font-bold text-pidgey-muted px-2 py-1 mb-1">Create New Draft</div>
+                                    <div className="grid grid-cols-1 gap-1">
+                                        <button 
+                                            onClick={() => handleQuickAction("Draft a new Stamp with a unique theme")} 
+                                            className="flex items-center gap-3 px-3 py-2.5 hover:bg-pidgey-panel rounded-lg text-left transition-colors group"
+                                        >
+                                            <div className="w-6 h-6 rounded bg-pink-500/10 text-pink-400 flex items-center justify-center group-hover:bg-pink-500 group-hover:text-white transition-colors"><Palette size={14}/></div>
+                                            <span className="text-sm font-bold text-gray-200 group-hover:text-white">Stamp</span>
+                                        </button>
+                                        <button 
+                                            onClick={() => handleQuickAction("Create a new drop")} 
+                                            className="flex items-center gap-3 px-3 py-2.5 hover:bg-pidgey-panel rounded-lg text-left transition-colors group"
+                                        >
+                                            <div className="w-6 h-6 rounded bg-yellow-500/10 text-yellow-400 flex items-center justify-center group-hover:bg-yellow-500 group-hover:text-white transition-colors"><Egg size={14}/></div>
+                                            <span className="text-sm font-bold text-gray-200 group-hover:text-white">Drop</span>
+                                        </button>
+                                        <button 
+                                            onClick={() => handleQuickAction("Draft a Broadcast message")} 
+                                            className="flex items-center gap-3 px-3 py-2.5 hover:bg-pidgey-panel rounded-lg text-left transition-colors group"
+                                        >
+                                            <div className="w-6 h-6 rounded bg-purple-500/10 text-purple-400 flex items-center justify-center group-hover:bg-purple-500 group-hover:text-white transition-colors"><Megaphone size={14}/></div>
+                                            <span className="text-sm font-bold text-gray-200 group-hover:text-white">Broadcast</span>
+                                        </button>
+                                        <button 
+                                            onClick={() => handleQuickAction("Draft a Promo code")} 
+                                            className="flex items-center gap-3 px-3 py-2.5 hover:bg-pidgey-panel rounded-lg text-left transition-colors group"
+                                        >
+                                            <div className="w-6 h-6 rounded bg-green-500/10 text-green-400 flex items-center justify-center group-hover:bg-green-500 group-hover:text-white transition-colors"><StickyNote size={14}/></div>
+                                            <span className="text-sm font-bold text-gray-200 group-hover:text-white">Promo</span>
+                                        </button>
+                                        <button 
+                                            onClick={() => handleQuickAction("Draft a new Member profile")} 
+                                            className="flex items-center gap-3 px-3 py-2.5 hover:bg-pidgey-panel rounded-lg text-left transition-colors group"
+                                        >
+                                            <div className="w-6 h-6 rounded bg-blue-500/10 text-blue-400 flex items-center justify-center group-hover:bg-blue-500 group-hover:text-white transition-colors"><User size={14}/></div>
+                                            <span className="text-sm font-bold text-gray-200 group-hover:text-white">Member</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="relative flex gap-2">
                                 <button 
-                                    onClick={() => handleSendMessage()}
-                                    disabled={!input.trim() || isTyping}
-                                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 bg-pidgey-accent text-pidgey-dark rounded-lg hover:bg-teal-300 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                    onClick={() => setShowDraftMenu(!showDraftMenu)}
+                                    className={`p-3 rounded-xl transition-colors flex-shrink-0 ${showDraftMenu ? 'bg-pidgey-accent text-pidgey-dark rotate-45' : 'bg-pidgey-dark border border-pidgey-border text-pidgey-muted hover:text-white hover:border-pidgey-accent'}`}
                                 >
-                                    <Send size={16} />
+                                    <Plus size={20} className="transition-transform duration-300" />
                                 </button>
+                                <div className="relative flex-1">
+                                    <input 
+                                        type="text" 
+                                        value={input}
+                                        onChange={(e) => setInput(e.target.value)}
+                                        onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
+                                        placeholder="Ask Pidgey to create a drop, broadcast, or promo..."
+                                        className="w-full bg-pidgey-dark border border-pidgey-border rounded-xl pl-4 pr-12 py-3 text-sm focus:outline-none focus:border-pidgey-accent focus:ring-1 focus:ring-pidgey-accent text-white placeholder-pidgey-muted transition-all"
+                                    />
+                                    <button 
+                                        onClick={() => handleSendMessage()}
+                                        disabled={!input.trim() || isTyping}
+                                        className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 bg-pidgey-accent text-pidgey-dark rounded-lg hover:bg-teal-300 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                        <Send size={16} />
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>

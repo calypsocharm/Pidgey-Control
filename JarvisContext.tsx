@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useState, PropsWithChildren } from 'react';
 import { CreationDraft } from './types';
 
@@ -21,6 +20,10 @@ interface PidgeyContextType {
   // Memory / Learning
   memories: string[];
   learn: (fact: string) => void;
+
+  // Ephemeral Draft Payload for page-to-page interactions
+  draftPayload: { type: string; data: any } | null;
+  setDraftPayload: (payload: { type: string; data: any } | null) => void;
 }
 
 const PidgeyContext = createContext<PidgeyContextType | undefined>(undefined);
@@ -33,6 +36,9 @@ export const JarvisProvider: React.FC<PropsWithChildren<{}>> = ({ children }) =>
   
   // Centralized Draft Repository
   const [creations, setCreations] = useState<CreationDraft[]>([]);
+
+  // Ephemeral payload for inter-component communication
+  const [draftPayload, setDraftPayload] = useState<{ type: string; data: any } | null>(null);
 
   const openPidgey = (message: string = '') => {
     if (message) setInitialMessage(message);
@@ -69,7 +75,8 @@ export const JarvisProvider: React.FC<PropsWithChildren<{}>> = ({ children }) =>
     <PidgeyContext.Provider value={{ 
         isOpen, mood, setMood, initialMessage, openPidgey, closePidgey, clearMessage,
         creations, addCreation, removeCreation,
-        memories, learn
+        memories, learn,
+        draftPayload, setDraftPayload
     }}>
       {children}
     </PidgeyContext.Provider>

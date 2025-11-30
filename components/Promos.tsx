@@ -1,9 +1,10 @@
 
 import React, { useState, useEffect } from 'react';
-import { StickyNote, Tag, Copy, Plus, MoreHorizontal, Power, Clock, Save, X } from 'lucide-react';
+import { StickyNote, Tag, Copy, Plus, MoreHorizontal, Power, Clock, Save, X, Sparkles } from 'lucide-react';
 import { AdminService } from '../services/adminService';
 import { Promo, PromoStatus, PromoType } from '../types';
 import { useJarvis } from '../JarvisContext';
+import { generateFormContent } from '../services/geminiService';
 
 export const Promos = () => {
     const [promos, setPromos] = useState<Promo[]>([]);
@@ -12,6 +13,7 @@ export const Promos = () => {
     // Create/Edit Modal State
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [currentPromo, setCurrentPromo] = useState<Partial<Promo>>({});
+    const [isFilling, setIsFilling] = useState(false);
 
     const { draftPayload, setDraftPayload } = useJarvis();
 
@@ -74,6 +76,20 @@ export const Promos = () => {
         }
         
         setIsModalOpen(false);
+    };
+
+    const handlePidgeyFill = async () => {
+        setIsFilling(true);
+        const data = await generateFormContent('promo');
+        if (data) {
+            setCurrentPromo(prev => ({
+                ...prev,
+                ...data,
+                // Ensure Enums
+                type: Object.values(PromoType).includes(data.type) ? data.type : PromoType.DISCOUNT
+            }));
+        }
+        setIsFilling(false);
     };
 
     const getTypeLabel = (type: PromoType) => {
@@ -166,6 +182,14 @@ export const Promos = () => {
                                 {draftPayload && draftPayload.type === 'DRAFT_PROMO' && (
                                     <span className="text-xs bg-pidgey-accent/20 text-pidgey-accent px-2 py-0.5 rounded-full">AI Draft</span>
                                 )}
+                                <button 
+                                    onClick={handlePidgeyFill}
+                                    disabled={isFilling}
+                                    className="text-xs flex items-center gap-1 text-pidgey-accent bg-pidgey-accent/10 hover:bg-pidgey-accent/20 px-2 py-1 rounded transition ml-2 border border-pidgey-accent/30"
+                                >
+                                    <Sparkles size={12} className={isFilling ? "animate-spin" : ""} />
+                                    Auto-Fill
+                                </button>
                             </h2>
                             <button onClick={() => setIsModalOpen(false)} className="text-pidgey-muted hover:text-white"><X size={20}/></button>
                         </div>

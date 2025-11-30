@@ -1,9 +1,11 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Image as ImageIcon, Sparkles, Upload, Save, Loader, RefreshCw, Palette, LayoutTemplate, Plus, Type, Film, X, Square, Copy, Download, Zap, Wand2, Layers, Snowflake, CloudRain, MonitorPlay, Move, ZoomIn, Scaling, FolderOpen, ChevronRight } from 'lucide-react';
+import { Image as ImageIcon, Sparkles, Upload, Save, Loader, RefreshCw, Palette, LayoutTemplate, Plus, Type, Film, X, Square, Copy, Download, Zap, Wand2, Layers, Snowflake, CloudRain, MonitorPlay, Move, ZoomIn, Scaling, FolderOpen, ChevronRight, Bird, Send as SendIcon } from 'lucide-react';
 import { AdminService } from '../services/adminService';
 import { generateImageAsset, generateStampName } from '../services/geminiService';
 import { Stamp, Asset, StampRarity, StampStatus } from '../types';
+import { useLocation } from 'react-router-dom';
+import { useJarvis } from '../JarvisContext';
 
 type StudioMode = 'stamps' | 'templates';
 
@@ -119,10 +121,23 @@ export const Playground = () => {
     const [isAnimating, setIsAnimating] = useState(false);
     
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const location = useLocation();
+
+    // Jarvis Context for "Save to Creations"
+    const { addCreation, openPidgey } = useJarvis();
 
     useEffect(() => {
         loadData();
     }, [mode]);
+
+    // Handle seamless navigation from Drops Inventory
+    useEffect(() => {
+        if (location.state?.loadStamp) {
+            handleSelectStamp(location.state.loadStamp);
+            // Clear state to avoid reload loops if needed, though React Router handles this well
+            window.history.replaceState({}, '');
+        }
+    }, [location.state]);
 
     const loadData = async () => {
         setLoading(true);
@@ -240,7 +255,9 @@ export const Playground = () => {
 
         setIsProcessing(true);
         const bucket = mode === 'stamps' ? 'stamps' : 'templates';
-        const { data, error } = await AdminService.files.upload(file, bucket);
+        const folder = mode === 'stamps' ? 'public_stamps' : undefined;
+
+        const { data, error } = await AdminService.files.upload(file, bucket, folder);
         
         if (data) {
             setPreviewUrl(data.url);
@@ -256,12 +273,15 @@ export const Playground = () => {
         try {
             const stylePrompt = selectedStyle.prompt ? `, in the style of ${selectedStyle.prompt}` : '';
             const motionPrompt = isAnimating ? ', cinematic lighting, dynamic pose, sequence frame' : '';
-            const fullPrompt = `${prompt}${stylePrompt}${motionPrompt}`;
+            // FORCE FULL BLEED
+            const fullPrompt = `${prompt}, full bleed, detailed art that fills the entire frame${stylePrompt}${motionPrompt}`;
 
             const base64 = await generateImageAsset(fullPrompt);
             if (base64) {
                 const bucket = mode === 'stamps' ? 'stamps' : 'templates';
-                const { data } = await AdminService.files.uploadBase64(base64, bucket);
+                const folder = mode === 'stamps' ? 'public_stamps' : undefined;
+                
+                const { data } = await AdminService.files.uploadBase64(base64, bucket, folder);
                 
                 if (data) {
                     setPreviewUrl(data.url);
@@ -290,53 +310,88 @@ export const Playground = () => {
         setIsProcessing(false);
     };
 
-    const handleSave = async () => {
-        if (!previewUrl) return;
+    // Helper to gather config state
+    const getDesignPayload = () => {
+         return {
+            border: borderConfig,
+            text: textConfig,
+            effect: effectConfig,
+            art: artConfig,
+            showTextOverlay: showTextOverlay,
+            prompt: prompt,
+            stylePreset: selectedStyle
+        };
+    };
+
+    const handleSaveDirectly = async () => {
+        if (!selectedStamp || !previewUrl) return;
         setIsProcessing(true);
 
-        if (mode === 'stamps') {
-            if (!selectedStamp) return;
-            
-            // Gather full design state
-            const designConfig = {
-                border: borderConfig,
-                text: textConfig,
-                effect: effectConfig,
-                art: artConfig,
-                showTextOverlay: showTextOverlay,
-                prompt: prompt,
-                stylePreset: selectedStyle
-            };
+        const payload = {
+            name: assetName || selectedStamp.name,
+            art_path: previewUrl,
+            rarity: selectedStamp.rarity,
+            status: selectedStamp.status, // Keep existing status
+            design_config: getDesignPayload()
+        };
 
-            const payload = {
-                name: assetName,
-                art_path: previewUrl,
-                rarity: selectedStamp.rarity,
-                status: StampStatus.DRAFT, // Always save as Draft first
-                design_config: designConfig
-            };
-
-            if (selectedStamp.id !== 'new') {
-                 const { error } = await AdminService.stamps.update(selectedStamp.id, payload);
-                 if (!error) {
-                    setStamps(prev => prev.map(s => s.id === selectedStamp.id ? { ...s, ...payload } : s));
-                    alert("Stamp updated successfully!");
-                 }
-            } else {
-                 const { data, error } = await AdminService.stamps.create({
-                    ...payload,
-                    id: `stp_${Date.now()}`,
-                    created_at: new Date().toISOString()
-                 });
-                 if (!error && data) {
-                     setStamps(prev => [data, ...prev]);
-                     alert(`New Stamp "${assetName}" saved as Draft! Go to Designation Studio to finalize.`);
-                 }
-            }
-        } else {
-             alert("Template saved to library!");
+        if (selectedStamp.id !== 'new') {
+             const { error } = await AdminService.stamps.update(selectedStamp.id, payload);
+             if (!error) {
+                setStamps(prev => prev.map(s => s.id === selectedStamp.id ? { ...s, ...payload } : s));
+                alert("Changes saved to database.");
+             } else {
+                 alert("Save failed: " + error.message);
+             }
         }
         setIsProcessing(false);
+    };
+
+    const handleSendToPidgey = async () => {
+        if (!selectedStamp || !previewUrl) return;
+        setIsProcessing(true);
+        
+        // Auto-Name on Save if still generic
+        let finalName = assetName;
+        if (finalName === 'New Stamp' || !finalName) {
+            try {
+                 finalName = await generateStampName({
+                    rarity: selectedStamp.rarity,
+                    material: borderConfig.material,
+                    style: borderConfig.style,
+                    visualPrompt: prompt || "Unknown visual"
+                });
+                setAssetName(finalName);
+            } catch(e) {
+                console.error("Auto-name on save failed", e);
+            }
+        }
+
+        const payload = {
+            name: finalName,
+            art_path: previewUrl,
+            rarity: selectedStamp.rarity,
+            status: StampStatus.DRAFT, 
+            design_config: getDesignPayload(),
+            collection: selectedStamp.collection || 'Playground'
+        };
+
+        // Create a new draft in Pidgey Creations
+        addCreation({
+             id: `draft_stamp_${Date.now()}`,
+             type: 'stamp',
+             summary: `Draft Stamp: ${finalName}`,
+             data: payload,
+             status: 'pending',
+             created_at: new Date().toISOString()
+         });
+
+         resetEditor();
+         setSelectedStamp(null);
+         setStamps([]); // Refresh logic
+         
+         openPidgey(`I've grabbed your design for "${finalName}"! It's safely in the **Pidgey Creations** tab.\n\nPlease go there to review the Rarity and finalize it for your Inventory. Chirp! 🎨`);
+         setIsProcessing(false);
     };
 
     const copyBorderStyle = () => {
@@ -368,25 +423,20 @@ export const Playground = () => {
         // --- Perforated Logic ---
         if (config.style === 'perforated') {
             const bg = config.material !== 'none' ? getMaterialBackground(config.material) : config.color;
-            // ART CONTAINMENT LOGIC:
-            // Calculate a safe padding to contain the art inside the perforations.
-            // We want the art to clear the holes plus a small margin.
+            // ART CONTAINMENT LOGIC
             const safePadding = Math.max(4, config.thickness / 2 + 2); 
             
             return {
                 ...baseStyle,
                 background: bg,
-                // The dots match the canvas, creating the illusion of holes
                 border: `${config.thickness}px dotted ${canvasBg}`,
                 backgroundClip: 'border-box',
-                // Perforated edge usually looks better with minimal radius
                 boxShadow: 'none',
                 filter: config.glowIntensity > 0 ? `drop-shadow(0 0 ${config.glowIntensity}px ${config.glowColor})` : 'none',
-                padding: `${safePadding}px` // Ensures image doesn't bleed into holes
+                padding: `${safePadding}px`
             };
         }
 
-        // --- Standard Border Logic (Dashed/Dotted/Double) ---
         if (config.style !== 'solid') {
              return {
                  ...baseStyle,
@@ -397,7 +447,6 @@ export const Playground = () => {
              };
         }
 
-        // --- Solid / Material Logic ---
         const materialBg = config.material !== 'none' ? getMaterialBackground(config.material) : config.color;
         
         return { 
@@ -547,12 +596,26 @@ export const Playground = () => {
                                          </div>
                                      </>
                                  )}
+
+                                 {/* ACTIONS: Save Direct or Send to Pidgey */}
+                                 {selectedStamp?.id !== 'new' && (
+                                     <button 
+                                        onClick={handleSaveDirectly}
+                                        disabled={isProcessing || !previewUrl}
+                                        className="px-3 py-2 bg-pidgey-dark border border-pidgey-border text-pidgey-muted hover:text-white font-bold rounded-lg transition text-xs flex items-center gap-1 disabled:opacity-50"
+                                     >
+                                        <Save size={14} /> Quick Save
+                                     </button>
+                                 )}
+
                                  <button 
-                                    onClick={handleSave}
+                                    onClick={handleSendToPidgey}
                                     disabled={isProcessing || !previewUrl}
                                     className="px-6 py-2 bg-pidgey-accent text-pidgey-dark font-bold rounded-lg hover:bg-teal-300 transition flex items-center gap-2 shadow-lg hover:shadow-teal-400/20 disabled:opacity-50"
+                                    title="Send as Draft to Pidgey Creations for approval"
                                  >
-                                    <Save size={18} /> Save Draft
+                                    <Bird size={18} /> 
+                                    {selectedStamp?.id === 'new' ? 'Send to Pidgey' : 'Propose as Draft'}
                                 </button>
                              </div>
                         </div>
@@ -581,7 +644,7 @@ export const Playground = () => {
                                         {previewUrl ? (
                                             <img 
                                                 src={previewUrl} 
-                                                className={`w-full h-full ${mode === 'stamps' ? 'object-contain' : 'object-cover'}`} 
+                                                className="w-full h-full object-cover" 
                                                 style={{
                                                     transform: `scale(${artConfig.scale}) translate(${artConfig.x}px, ${artConfig.y}px)`,
                                                     transition: 'transform 0.1s ease-out'

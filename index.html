@@ -1,5 +1,6 @@
+
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -26,39 +27,89 @@
             },
             colors: {
               pidgey: {
-                dark: '#0f172a', // Slate 900
-                panel: '#1e293b', // Slate 800
-                border: '#334155', // Slate 700
-                text: '#f1f5f9', // Slate 100
-                muted: '#94a3b8', // Slate 400
-                accent: '#2dd4bf', // Teal 400
-                secondary: '#a855f7', // Purple 500
+                dark: 'var(--pidgey-dark)',
+                panel: 'var(--pidgey-panel)',
+                border: 'var(--pidgey-border)',
+                text: 'var(--pidgey-text)',
+                muted: 'var(--pidgey-muted)',
+                accent: 'var(--pidgey-accent)',
+                secondary: 'var(--pidgey-secondary)',
+                // Dreamy Palette extensions
+                'dream-panel': 'var(--pidgey-dream-panel)', 
+                'glass-border': 'var(--pidgey-glass-border)',
               }
+            },
+            borderRadius: {
+                'xl': '0.75rem',
+                '2xl': '1rem',
+                '3xl': '1.5rem',
+                '4xl': '2rem',
+            },
+            animation: {
+                'pulse-slow': 'pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite',
             }
           }
         }
       }
     </script>
     <style>
-      body {
-        background-color: #0f172a;
-        color: #f1f5f9;
-        font-family: 'Inter', sans-serif;
+      :root {
+        /* LIGHT MODE VARIABLES (Pastel Friendly) */
+        --pidgey-bg-start: #f0fdfa; /* Teal 50 */
+        --pidgey-bg-end: #e0f2fe;   /* Sky 100 */
+        
+        --pidgey-dark: #f8fafc;     /* Slate 50 (Backgrounds) */
+        --pidgey-panel: #ffffff;    /* White (Cards) */
+        --pidgey-border: #cbd5e1;   /* Slate 300 */
+        --pidgey-text: #0f172a;     /* Slate 900 */
+        --pidgey-muted: #64748b;    /* Slate 500 */
+        --pidgey-accent: #0d9488;   /* Teal 600 */
+        --pidgey-secondary: #9333ea; /* Purple 600 */
+        
+        --pidgey-glass-border: rgba(0, 0, 0, 0.05);
+        --pidgey-dream-panel: rgba(255, 255, 255, 0.8);
       }
-      /* Custom scrollbar for dark theme */
+
+      .dark {
+        /* DARK MODE VARIABLES (Dreamy Deep) */
+        --pidgey-bg-start: #0f172a; /* Slate 900 */
+        --pidgey-bg-end: #1e1b4b;   /* Indigo 950 */
+
+        --pidgey-dark: #0f172a;     /* Slate 900 */
+        --pidgey-panel: #1e293b;    /* Slate 800 */
+        --pidgey-border: #334155;   /* Slate 700 */
+        --pidgey-text: #f1f5f9;     /* Slate 100 */
+        --pidgey-muted: #94a3b8;    /* Slate 400 */
+        --pidgey-accent: #2dd4bf;   /* Teal 400 */
+        --pidgey-secondary: #a855f7; /* Purple 500 */
+
+        --pidgey-glass-border: rgba(255, 255, 255, 0.08);
+        --pidgey-dream-panel: rgba(30, 41, 59, 0.6);
+      }
+
+      body {
+        /* Dreamy Gradient Background */
+        background: linear-gradient(135deg, var(--pidgey-bg-start) 0%, var(--pidgey-bg-end) 100%);
+        background-attachment: fixed;
+        color: var(--pidgey-text);
+        font-family: 'Inter', sans-serif;
+        transition: background 0.5s ease, color 0.3s ease;
+      }
+      
+      /* Custom scrollbar */
       ::-webkit-scrollbar {
         width: 8px;
         height: 8px;
       }
       ::-webkit-scrollbar-track {
-        background: #0f172a; 
+        background: rgba(0,0,0,0.1); 
       }
       ::-webkit-scrollbar-thumb {
-        background: #334155; 
+        background: var(--pidgey-border); 
         border-radius: 4px;
       }
       ::-webkit-scrollbar-thumb:hover {
-        background: #475569; 
+        background: var(--pidgey-muted); 
       }
     </style>
   <script type="importmap">

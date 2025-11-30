@@ -1,10 +1,11 @@
 
 import React, { useState, useEffect } from 'react';
-import { Search, Plus, RefreshCw, X, Shield, Star, Ban, Egg, CreditCard, History, Edit2, CheckCircle2, AlertTriangle, Undo2, Save, Lock, Megaphone, Activity, Ticket, Stamp, Coins, UserCog, CalendarClock } from 'lucide-react';
+import { Search, Plus, RefreshCw, X, Shield, Star, Ban, Egg, CreditCard, History, Edit2, CheckCircle2, AlertTriangle, Undo2, Save, Lock, Megaphone, Activity, Ticket, Stamp, Coins, UserCog, CalendarClock, Sparkles } from 'lucide-react';
 import { AdminService } from '../services/adminService';
 import { supabase } from '../services/supabaseClient';
 import { Profile, Role, Tier, Transaction } from '../types';
 import { useSafeMode } from '../SafeModeContext';
+import { generateFormContent } from '../services/geminiService';
 
 // Unified Timeline Event Interface
 interface TimelineEvent {
@@ -78,6 +79,7 @@ export const Members = () => {
     // Add Member Modal State
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
     const [newMember, setNewMember] = useState<Partial<Profile>>({ role: Role.USER, tier: Tier.FREE, egg_balance: { standard: 3, premium: 0, mystery: 0 }, status: 'active' });
+    const [isFilling, setIsFilling] = useState(false);
 
     // Economy Action State (Issue Eggs)
     const [isIssueModalOpen, setIsIssueModalOpen] = useState(false);
@@ -186,6 +188,7 @@ export const Members = () => {
         
         if (error) {
             console.error('Pidgey Chirp! Error creating member:', error);
+            // Display proper error message instead of [object Object]
             alert(`Failed to create member: ${error.message || JSON.stringify(error)}`);
         } else {
             console.log('Feathers Up! Member created successfully:', data[0]);
@@ -193,6 +196,21 @@ export const Members = () => {
             fetchMembers();
             setNewMember({ role: Role.USER, tier: Tier.FREE, egg_balance: { standard: 3, premium: 0, mystery: 0 }, status: 'active' });
         }
+    };
+
+    const handlePidgeyFill = async () => {
+        setIsFilling(true);
+        const data = await generateFormContent('member');
+        if (data) {
+            setNewMember({
+                ...newMember,
+                ...data,
+                // Ensure Enums align
+                role: Object.values(Role).includes(data.role) ? data.role : Role.USER,
+                tier: Object.values(Tier).includes(data.tier) ? data.tier : Tier.FREE,
+            });
+        }
+        setIsFilling(false);
     };
 
     // --- Quick Actions ---
@@ -548,7 +566,17 @@ export const Members = () => {
                     <div className="bg-pidgey-panel border border-pidgey-border rounded-xl w-full max-w-md shadow-2xl p-6">
                         <div className="flex justify-between items-center mb-6">
                             <h2 className="text-xl font-bold">Add New Member</h2>
-                            <button onClick={() => setIsAddModalOpen(false)} className="text-pidgey-muted hover:text-white"><X size={20}/></button>
+                            <div className="flex items-center gap-3">
+                                <button 
+                                    onClick={handlePidgeyFill}
+                                    disabled={isFilling}
+                                    className="text-xs flex items-center gap-1 text-pidgey-accent hover:text-white transition"
+                                >
+                                    <Sparkles size={12} className={isFilling ? "animate-spin" : ""} />
+                                    {isFilling ? "Pidgey working..." : "Auto-Fill with Pidgey"}
+                                </button>
+                                <button onClick={() => setIsAddModalOpen(false)} className="text-pidgey-muted hover:text-white"><X size={20}/></button>
+                            </div>
                         </div>
                         <div className="space-y-4">
                             <div>

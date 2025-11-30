@@ -24,8 +24,8 @@ export default defineConfig({
     },
   },
 
-  // Ensure the build output directory matches the old CRA structure if needed
+  // Ensure the build output directory matches the vercel.json configuration
   build: {
-    outDir: 'build',
+    outDir: 'dist',
   },
 });

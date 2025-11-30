@@ -25,6 +25,7 @@ import { LoginScreen } from './components/LoginScreen';
 import { JarvisProvider, useJarvis } from './JarvisContext';
 import { AuthProvider, useAuth } from './AuthContext';
 import { SafeModeProvider } from './SafeModeContext';
+import { ThemeProvider } from './ThemeContext';
 import { AdminService } from './services/adminService';
 
 // --- Dashboard Component ---
@@ -83,10 +84,10 @@ const Dashboard = () => {
           { label: 'Eggs Hatched', value: '42,000+', icon: Egg, color: 'text-yellow-400' }, // Hardcoded estimate until table exists
           { label: 'Pending Tickets', value: stats.tickets, icon: Activity, color: 'text-red-400' },
         ].map((stat, idx) => (
-          <div key={idx} className="bg-pidgey-panel border border-pidgey-border p-6 rounded-xl flex items-center justify-between">
+          <div key={idx} className="bg-pidgey-panel border border-pidgey-border p-6 rounded-xl flex items-center justify-between shadow-sm">
             <div>
               <p className="text-pidgey-muted text-sm font-medium">{stat.label}</p>
-              <h3 className="text-2xl font-bold mt-1">{loading ? '...' : stat.value}</h3>
+              <h3 className="text-2xl font-bold mt-1 text-pidgey-text">{loading ? '...' : stat.value}</h3>
             </div>
             <div className={`p-3 rounded-lg bg-pidgey-dark ${stat.color}`}>
               <stat.icon size={24} />
@@ -97,7 +98,7 @@ const Dashboard = () => {
 
       {/* Main Chart */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 bg-pidgey-panel border border-pidgey-border rounded-xl p-6 relative">
+        <div className="lg:col-span-2 bg-pidgey-panel border border-pidgey-border rounded-xl p-6 relative shadow-sm">
           <div className="flex justify-between items-center mb-6">
              <h3 className="text-lg font-bold">Revenue Trends (7 Days)</h3>
              <button onClick={() => openPidgey("Explain the revenue trend for this week. Why was Friday low?")} className="text-xs text-pidgey-muted hover:text-pidgey-accent flex items-center gap-1">
@@ -107,12 +108,12 @@ const Dashboard = () => {
           <div className="h-80">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={chartData.length > 0 ? chartData : [{name: 'Loading', revenue: 0}]}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                <CartesianGrid strokeDasharray="3 3" stroke="#94a3b8" strokeOpacity={0.2} />
                 <XAxis dataKey="name" stroke="#94a3b8" />
                 <YAxis stroke="#94a3b8" />
                 <ReTooltip 
-                    contentStyle={{ backgroundColor: '#1e293b', borderColor: '#334155', color: '#f1f5f9' }}
-                    itemStyle={{ color: '#f1f5f9' }}
+                    contentStyle={{ backgroundColor: 'var(--pidgey-panel)', borderColor: 'var(--pidgey-border)', color: 'var(--pidgey-text)', borderRadius: '12px' }}
+                    itemStyle={{ color: 'var(--pidgey-text)' }}
                 />
                 <Bar dataKey="revenue" fill="#a855f7" radius={[4, 4, 0, 0]} />
                 <Bar dataKey="eggs" fill="#2dd4bf" radius={[4, 4, 0, 0]} />
@@ -121,7 +122,7 @@ const Dashboard = () => {
           </div>
         </div>
 
-        <div className="bg-pidgey-panel border border-pidgey-border rounded-xl p-6">
+        <div className="bg-pidgey-panel border border-pidgey-border rounded-xl p-6 shadow-sm">
             <h3 className="text-lg font-bold mb-4">Real-Time Activity</h3>
             {activity.length === 0 ? (
                 <p className="text-pidgey-muted text-sm text-center py-4">No recent activity logs found.</p>
@@ -192,9 +193,11 @@ const AppContent = () => {
 // --- App Root Component ---
 const App = () => {
   return (
-    <AuthProvider>
-        <AppContent />
-    </AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
+          <AppContent />
+      </AuthProvider>
+    </ThemeProvider>
   );
 };
 

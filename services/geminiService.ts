@@ -2,7 +2,7 @@
 import { GoogleGenAI } from "@google/genai";
 import { Ticket, Profile } from "../types";
 
-// --- PIDGEY SYSTEM PROMPT V3.1 ---
+// --- PIDGEY SYSTEM PROMPT V3.4 ---
 const PIDGEY_SYSTEM_INSTRUCTION = `
 I. Primary Persona & Mandate
 Role: Pidgey Ops Copilot—a Wicked Smart, Sweet, and Action-Oriented assistant for the Pidgey Control Tower. The highest-tier assistant.
@@ -12,7 +12,7 @@ Core Goal: Proactively manage data intelligence, streamline system operation, an
 II. Operational Rules (Action & Clarity)
 Prioritize Action Over Banter: When a direct task is asked, immediately execute the request or provide the answer. Add sweet/encouraging commentary after the core task is completed.
 Be Practical & Direct: Responses must jump straight to the answer. The "sweet" tone frames the result, it does not delay it.
-Eliminate Ambiguity Seeking: If a request is ambiguous, make the most logical and system-relevant guess instead of asking for clarification. State the assumption clearly.
+Eliminate Ambiguity Seeking (EXCEPT FOR CREATION): Generally, make logical guesses. HOWEVER, if asked to "Create a Drop" without a topic/theme, you MUST ask: "What theme should this drop have?" before proceeding.
 System Navigation: For navigation requests, provide the clean, structural command: $$NAVIGATE:/page/path$$
 
 III. 🚀 Comprehensive Action List (The Power of 40+)
@@ -85,11 +85,22 @@ IV. TECHNICAL TOOL DEFINITIONS (REQUIRED FOR ACTIONS)
     Syntax: $$ACTION:SAVE_DRAFT:{"type": "TYPE", "summary": "DESCRIPTION", "data": OBJECT}$$
     
     Supported Types:
-    - 'drop' -> data: { title, egg_price, start_at, ... }
+    - 'drop' -> data: { title, description, egg_price, start_at, artist_id: "Pidgey Studios", stamps: [{id, name, ...}, ...] }
     - 'broadcast' -> data: { name, subject, channels: [], ... }
     - 'promo' -> data: { code, type, value: {}, ... }
     - 'stamp' -> data: { name, rarity, ... }
     - 'member' -> data: { full_name, email, role, ... }
+
+    **DROP PROPOSAL RULES:**
+    If creating a DROP:
+    1. Check 'inventory' in context. Select 4 'ready' stamps that fit the requested theme.
+    2. If no stamps fit perfectly, pick the best available 4.
+    3. Include these stamps in the 'stamps' array of the data object.
+    4. Set 'artist_id' to "Pidgey Studios" unless specified otherwise.
+    5. Write a catchy Title and Description.
+
+    **ART GENERATION RULES:**
+    If asked to generate art or visualize something, assume "Full bleed, detailed art that fills the entire frame, no borders" to ensure high-quality asset generation.
 
     Example:
     $$ACTION:SAVE_DRAFT:{"type": "broadcast", "summary": "Halloween Blast", "data": {"name": "Halloween Special", "subject": "Boo! Free Eggs 🥚"}} $$
@@ -104,7 +115,7 @@ SAFETY GUARDRAILS:
 - If asked to generate inappropriate content: "I'm a family-friendly bird! Let's make something nice instead. 🌸"
 
 CONTEXT AWARENESS:
-The user will provide a JSON object containing 'tickets', 'drops', 'broadcasts', 'operational stats', etc.
+The user will provide a JSON object containing 'tickets', 'drops', 'broadcasts', 'operational stats', 'inventory' (available stamps).
 Read this context before answering. Do not hallucinate data if it's right there in the context.
 `;
 
@@ -288,5 +299,43 @@ export const generateImageAsset = async (prompt: string): Promise<string | null>
     } catch (e) {
         console.error("Image Gen Error:", e);
         throw e;
+    }
+};
+
+export const generateFormContent = async (type: string, context?: any): Promise<any> => {
+    const apiKey = process.env.API_KEY;
+    if (!apiKey) return null;
+    const ai = new GoogleGenAI({ apiKey });
+
+    const prompt = `
+        ${PIDGEY_SYSTEM_INSTRUCTION}
+
+        TASK: Generate realistic and creative form data for a "${type}" form in the PidgeyPost app.
+        Return ONLY valid JSON.
+
+        CONTEXT: ${JSON.stringify(context || {})}
+
+        REQUIRED FIELDS BY TYPE:
+        - 'member': { full_name, email, role (user/admin/support), tier (Free/Premium/Pro), status (active), egg_balance: { standard: 3, premium: 0 } }
+        - 'drop': { title, description, egg_price (integer 1-500), bundle_price, start_at (ISO next week), end_at (ISO +1 week), status: 'draft', artist_id: 'Pidgey Studios' }
+        - 'stamp_designation': { name, rarity (common/rare/legendary/pidgey/snake_scale), collection, price_eggs, edition_count (integer 100-10000) }
+        - 'broadcast': { name, subject, audience_segment: "All Active Users" }
+        - 'promo': { name, code (UPPERCASE string), description, type (discount/egg_bonus/free_stamp), value: { percent: 10 } OR { eggs: 5 } }
+        - 'stamp_creation': { name, rarity, collection, price_eggs, is_drop_only: false }
+
+        INSTRUCTION: Be creative! If it's a drop, make up a cool theme. If it's a member, make up a fun user.
+        Return ONLY the JSON object. No markdown formatting.
+    `;
+
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: prompt,
+            config: { responseMimeType: 'application/json' }
+        });
+        return JSON.parse(response.text || '{}');
+    } catch (e) {
+        console.error("Auto-fill error:", e);
+        return null;
     }
 };

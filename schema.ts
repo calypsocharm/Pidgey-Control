@@ -58,6 +58,11 @@ CREATE TABLE public.drops (
   title text,
   description text,
   status text,
+  egg_price int default 0,
+  bundle_price int default 0,
+  max_supply int,
+  artist_id text,
+  banner_path text,
   start_at timestamptz,
   end_at timestamptz,
   created_at timestamptz DEFAULT now()
@@ -67,14 +72,45 @@ CREATE TABLE public.drops (
 CREATE TABLE public.stamps (
   id text primary key,
   name text,
+  slug text,
   rarity text,
   status text, -- draft, ready, active, archived
   collection text,
+  artist_id text,
   art_path text, -- URL to the file in storage
   price_eggs int default 0,
   edition_count int default 0, -- Max supply for this stamp
   is_drop_only boolean default false,
   design_config jsonb, -- Playground settings
   created_at timestamptz default now()
+);
+
+-- 8) TABLE: broadcasts
+CREATE TABLE public.broadcasts (
+  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  name text,
+  subject text,
+  channels text[], -- array of strings e.g. ['email', 'push']
+  audience_segment text,
+  audience_size int default 0,
+  scheduled_at timestamptz,
+  status text default 'draft',
+  stats jsonb default '{"delivered":0, "opened":0, "clicked":0, "failed":0}'::jsonb,
+  created_at timestamptz DEFAULT now()
+);
+
+-- 9) TABLE: promos
+CREATE TABLE public.promos (
+  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  name text,
+  code text,
+  type text,
+  status text default 'draft',
+  description text,
+  value jsonb,
+  start_at timestamptz,
+  end_at timestamptz,
+  usage_count int default 0,
+  created_at timestamptz DEFAULT now()
 );
 `;
