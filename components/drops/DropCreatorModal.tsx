@@ -14,27 +14,34 @@ interface DropCreatorModalProps {
     onSave: () => void;
     onPidgeyFill: () => void;
     isFilling: boolean;
-    onRevert?: () => void; // Optional rollback action
-    isDraftView?: boolean; // If showing drafts or sent items
+    onRevert?: () => void;
+    isDraftView?: boolean;
     isStampSelectorOpen: boolean;
     setIsStampSelectorOpen: (open: boolean) => void;
 }
+
+const getStampVisuals = (r: StampRarity) => {
+    switch(r) {
+        case StampRarity.COMMON: 
+            return { border: 'border-transparent', glow: '', badge: 'bg-slate-500 text-white', container: 'bg-slate-50' };
+        case StampRarity.RARE: 
+            return { border: 'border-yellow-400', glow: '', badge: 'bg-yellow-500 text-yellow-900', container: 'bg-yellow-50' };
+        case StampRarity.FOIL: 
+            return { border: 'border-blue-400', glow: 'shadow-[0_0_15px_rgba(96,165,250,0.5)]', badge: 'bg-blue-500 text-white', container: 'bg-blue-50' };
+        case StampRarity.LEGENDARY: 
+            return { border: 'border-amber-400', glow: 'shadow-[0_0_20px_rgba(251,191,36,0.6)]', badge: 'bg-amber-500 text-white', container: 'bg-amber-50' };
+        case StampRarity.PIDGEY: 
+            return { border: 'border-purple-500', glow: 'shadow-[0_0_25px_rgba(168,85,247,0.7)]', badge: 'bg-purple-600 text-white', container: 'bg-purple-50' };
+        default: 
+            return { border: 'border-transparent', glow: '', badge: 'bg-gray-500', container: 'bg-slate-50' };
+    }
+};
 
 export const DropCreatorModal: React.FC<DropCreatorModalProps> = ({
     isOpen, onClose, drop, onUpdate, dropStamps, onToggleStamp, readyStamps,
     onSave, onPidgeyFill, isFilling, onRevert, isStampSelectorOpen, setIsStampSelectorOpen
 }) => {
     if (!isOpen) return null;
-
-    const getRarityColor = (r: StampRarity) => {
-        switch(r) {
-            case StampRarity.COMMON: return 'bg-slate-500 text-white';
-            case StampRarity.RARE: return 'bg-blue-500 text-white';
-            case StampRarity.LEGENDARY: return 'bg-yellow-500 text-yellow-900';
-            case StampRarity.PIDGEY: return 'bg-purple-500 text-white';
-            default: return 'bg-gray-500 text-white';
-        }
-    };
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
@@ -173,25 +180,31 @@ export const DropCreatorModal: React.FC<DropCreatorModalProps> = ({
                             </div>
                         ) : (
                             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                                {dropStamps.map(stamp => (
-                                    <div key={stamp.id} className="bg-pidgey-dark border border-pidgey-border rounded-xl p-3 relative group">
-                                        <button 
-                                            onClick={() => onToggleStamp(stamp as Stamp)}
-                                            className="absolute top-2 right-2 p-1.5 bg-red-500/80 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity z-10 hover:bg-red-500"
-                                        >
-                                            <X size={12} />
-                                        </button>
-                                        <div className="aspect-[3/4] bg-white rounded-sm mb-2 flex items-center justify-center overflow-hidden border-[4px] border-dotted border-pidgey-dark p-0.5">
-                                            <div className="w-full h-full bg-slate-100 flex items-center justify-center relative overflow-hidden">
-                                                <img src={stamp.art_path} className="w-full h-full object-cover" />
+                                {dropStamps.map(stamp => {
+                                    const visuals = getStampVisuals(stamp.rarity as StampRarity);
+                                    return (
+                                        <div key={stamp.id} className="bg-pidgey-dark border border-pidgey-border rounded-xl p-3 relative group">
+                                            <button 
+                                                onClick={() => onToggleStamp(stamp as Stamp)}
+                                                className="absolute top-2 right-2 p-1.5 bg-red-500/80 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity z-10 hover:bg-red-500"
+                                            >
+                                                <X size={12} />
+                                            </button>
+                                            
+                                            {/* Visual */}
+                                            <div className="aspect-[3/4] bg-white rounded-sm mb-2 flex items-center justify-center overflow-hidden border-[4px] border-dotted border-pidgey-dark p-0.5">
+                                                <div className={`w-full h-full relative overflow-hidden border-[2px] ${visuals.border} ${visuals.glow} ${visuals.container}`}>
+                                                    <img src={stamp.art_path} className="w-full h-full object-cover" />
+                                                </div>
+                                            </div>
+                                            
+                                            <div className="font-bold text-xs truncate text-white">{stamp.name}</div>
+                                            <div className={`text-[9px] px-1.5 rounded uppercase inline-block mt-1 ${visuals.badge}`}>
+                                                {stamp.rarity}
                                             </div>
                                         </div>
-                                        <div className="font-bold text-xs truncate text-white">{stamp.name}</div>
-                                        <div className={`text-[9px] px-1.5 rounded uppercase inline-block mt-1 ${getRarityColor(stamp.rarity as StampRarity)}`}>
-                                            {stamp.rarity}
-                                        </div>
-                                    </div>
-                                ))}
+                                    );
+                                })}
                             </div>
                         )}
                         
@@ -213,6 +226,7 @@ export const DropCreatorModal: React.FC<DropCreatorModalProps> = ({
                                         <div className="grid grid-cols-3 lg:grid-cols-5 gap-4">
                                             {readyStamps.map(stamp => {
                                                 const isSelected = dropStamps.some(s => s.id === stamp.id);
+                                                const visuals = getStampVisuals(stamp.rarity);
                                                 return (
                                                     <div 
                                                         key={stamp.id} 
@@ -224,7 +238,7 @@ export const DropCreatorModal: React.FC<DropCreatorModalProps> = ({
                                                         }`}
                                                     >
                                                         <div className="aspect-[3/4] bg-white rounded-sm mb-2 flex items-center justify-center overflow-hidden relative border-[4px] border-dotted border-pidgey-dark p-0.5">
-                                                            <div className="w-full h-full bg-slate-100 flex items-center justify-center relative overflow-hidden">
+                                                            <div className={`w-full h-full relative overflow-hidden border-[2px] ${visuals.border} ${visuals.glow} ${visuals.container}`}>
                                                                 <img src={stamp.art_path} className="w-full h-full object-cover" />
                                                             </div>
                                                             {isSelected && (
@@ -235,6 +249,7 @@ export const DropCreatorModal: React.FC<DropCreatorModalProps> = ({
                                                         </div>
                                                         <div className="font-bold text-xs truncate text-white">{stamp.name}</div>
                                                         <div className="flex justify-between mt-1">
+                                                            <span className={`text-[8px] uppercase px-1 rounded ${visuals.badge}`}>{stamp.rarity}</span>
                                                             <span className="text-[9px] text-pidgey-muted uppercase">{stamp.edition_count} Supply</span>
                                                         </div>
                                                     </div>

@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { X, Tag, Sparkles, CheckCircle2, Palette } from 'lucide-react';
+import { X, Tag, Sparkles, CheckCircle2, Palette, Loader } from 'lucide-react';
 import { Stamp, StampRarity } from '../../types';
 import { useNavigate } from 'react-router-dom';
 
@@ -13,38 +13,59 @@ interface DesignationModalProps {
     onAutoName: () => void;
     onPidgeyFill: () => void;
     isFilling: boolean;
+    isSaving?: boolean;
 }
 
+// Reusing the visual logic for consistency
+const getStampVisuals = (r: StampRarity) => {
+    switch(r) {
+        case StampRarity.COMMON: 
+            return { border: 'border-transparent', glow: '', badge: 'bg-slate-500 text-white', container: 'bg-slate-50' };
+        case StampRarity.RARE: 
+            return { border: 'border-yellow-400', glow: '', badge: 'bg-yellow-500 text-yellow-900', container: 'bg-yellow-50' };
+        case StampRarity.FOIL: 
+            return { border: 'border-blue-400', glow: 'shadow-[0_0_15px_rgba(96,165,250,0.5)]', badge: 'bg-blue-500 text-white', container: 'bg-blue-50' };
+        case StampRarity.LEGENDARY: 
+            return { border: 'border-amber-400', glow: 'shadow-[0_0_20px_rgba(251,191,36,0.6)]', badge: 'bg-amber-500 text-white', container: 'bg-amber-50' };
+        case StampRarity.PIDGEY: 
+            return { border: 'border-purple-500', glow: 'shadow-[0_0_25px_rgba(168,85,247,0.7)]', badge: 'bg-purple-600 text-white', container: 'bg-purple-50' };
+        default: 
+            return { border: 'border-transparent', glow: '', badge: 'bg-gray-500', container: 'bg-slate-50' };
+    }
+};
+
 export const DesignationModal: React.FC<DesignationModalProps> = ({ 
-    isOpen, onClose, stamp, onUpdate, onSave, onAutoName, onPidgeyFill, isFilling 
+    isOpen, onClose, stamp, onUpdate, onSave, onAutoName, onPidgeyFill, isFilling, isSaving = false
 }) => {
     const navigate = useNavigate();
 
     if (!isOpen || !stamp) return null;
-
-    const getRarityColor = (r: StampRarity) => {
-        switch(r) {
-            case StampRarity.COMMON: return 'bg-slate-500 text-white';
-            case StampRarity.RARE: return 'bg-blue-500 text-white';
-            case StampRarity.LEGENDARY: return 'bg-yellow-500 text-yellow-900';
-            case StampRarity.PIDGEY: return 'bg-purple-500 text-white';
-            default: return 'bg-gray-500 text-white';
-        }
-    };
+    
+    const visuals = getStampVisuals(stamp.rarity);
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
             <div className="bg-pidgey-panel border border-pidgey-border rounded-2xl w-full max-w-4xl shadow-2xl overflow-hidden flex flex-col md:flex-row h-[600px] animate-in zoom-in-95 duration-200">
                 {/* Left: Preview */}
                 <div className="w-full md:w-1/3 bg-pidgey-dark p-8 flex items-center justify-center border-b md:border-b-0 md:border-r border-pidgey-border relative flex-col gap-4">
+                    
+                    {/* STAMP VISUAL */}
                     <div className="relative w-full aspect-[3/4] bg-white rounded-sm flex items-center justify-center shadow-2xl border-[6px] border-dotted border-pidgey-dark p-1">
-                        <div className="w-full h-full bg-slate-100 flex items-center justify-center relative overflow-hidden">
+                        
+                        {/* Inner Frame with Rarity */}
+                        <div className={`w-full h-full flex items-center justify-center relative overflow-hidden border-[4px] transition-all duration-500 ${visuals.border} ${visuals.glow} ${visuals.container}`}>
                              <img src={stamp.art_path} className="w-full h-full object-cover" />
+                             
+                             {/* Shine Effects */}
+                             {(stamp.rarity === StampRarity.FOIL || stamp.rarity === StampRarity.LEGENDARY || stamp.rarity === StampRarity.PIDGEY) && (
+                                <div className="absolute inset-0 bg-gradient-to-tr from-white/20 to-transparent opacity-50 pointer-events-none mix-blend-overlay"></div>
+                             )}
                         </div>
+
                         {/* Overlay Stats */}
-                        <div className="absolute bottom-2 left-2 right-2 bg-black/60 backdrop-blur rounded p-2 text-center">
+                        <div className="absolute bottom-3 left-3 right-3 bg-black/70 backdrop-blur rounded p-2 text-center border border-white/10">
                             <div className="text-white font-bold text-sm">{stamp.name}</div>
-                            <div className={`text-[10px] uppercase font-bold mt-1 inline-block px-2 rounded ${getRarityColor(stamp.rarity)}`}>{stamp.rarity}</div>
+                            <div className={`text-[10px] uppercase font-bold mt-1 inline-block px-2 rounded ${visuals.badge}`}>{stamp.rarity}</div>
                         </div>
                     </div>
                     
@@ -137,7 +158,7 @@ export const DesignationModal: React.FC<DesignationModalProps> = ({
                                         type="number"
                                         className="w-full bg-pidgey-panel border border-pidgey-border rounded p-2 text-white outline-none"
                                         value={stamp.edition_count || ''}
-                                        onChange={e => onUpdate({ edition_count: parseInt(e.target.value) })}
+                                        onChange={e => onUpdate({ edition_count: parseInt(e.target.value) || 0 })}
                                         placeholder="Total Supply"
                                     />
                                 </div>
@@ -147,7 +168,7 @@ export const DesignationModal: React.FC<DesignationModalProps> = ({
                                         type="number"
                                         className="w-full bg-pidgey-panel border border-pidgey-border rounded p-2 text-white outline-none"
                                         value={stamp.price_eggs || 0}
-                                        onChange={e => onUpdate({ price_eggs: parseInt(e.target.value) })}
+                                        onChange={e => onUpdate({ price_eggs: parseInt(e.target.value) || 0 })}
                                     />
                                 </div>
                             </div>
@@ -167,9 +188,11 @@ export const DesignationModal: React.FC<DesignationModalProps> = ({
                             <button onClick={onClose} className="px-4 py-2 text-sm font-bold text-pidgey-muted hover:text-white transition">Cancel</button>
                             <button 
                                 onClick={onSave}
-                                className="px-6 py-2 bg-gradient-to-r from-pidgey-accent to-pidgey-secondary text-pidgey-dark font-bold rounded-lg hover:brightness-110 transition flex items-center gap-2 shadow-lg shadow-teal-500/20"
+                                disabled={isSaving}
+                                className="px-6 py-2 bg-gradient-to-r from-pidgey-accent to-pidgey-secondary text-pidgey-dark font-bold rounded-lg hover:brightness-110 transition flex items-center gap-2 shadow-lg shadow-teal-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
-                                <CheckCircle2 size={18} /> Finalize & Ready
+                                {isSaving ? <Loader size={18} className="animate-spin" /> : <CheckCircle2 size={18} />} 
+                                {isSaving ? 'Finalizing...' : 'Finalize & Ready'}
                             </button>
                         </div>
                     </div>

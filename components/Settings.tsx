@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Settings as SettingsIcon, Shield, CreditCard, Activity, Globe, Save, Plus, Trash2, Database, Copy, Server, CloudLightning, Check, AlertOctagon, UploadCloud, RefreshCw } from 'lucide-react';
 import { PUBLIC_SCHEMA_DDL } from '../schema';
@@ -37,7 +38,7 @@ export const Settings = () => {
 
     const handleCopySchema = () => {
         navigator.clipboard.writeText(PUBLIC_SCHEMA_DDL);
-        alert("Schema SQL copied to clipboard! Paste this into your Supabase SQL Editor to fix missing tables.");
+        alert("SQL Copied! Paste this into the Supabase SQL Editor to fix 'Missing Column' errors.");
     };
     
     const handleSeedUsers = async () => {
@@ -64,7 +65,7 @@ export const Settings = () => {
     };
 
     return (
-        <div className="flex flex-col md:flex-row gap-8">
+        <div className="flex flex-col md:flex-row gap-8 h-[calc(100vh-8rem)]">
             {/* Sidebar Navigation */}
             <div className="w-full md:w-64 flex-shrink-0 space-y-2">
                 <div className="mb-6 px-2">
@@ -75,14 +76,14 @@ export const Settings = () => {
                 <TabButton id="general" label="App & Brand" icon={Globe} />
                 <TabButton id="economy" label="Game Economy" icon={CreditCard} />
                 <TabButton id="roles" label="Roles & Access" icon={Shield} />
-                <TabButton id="database" label="Database Schema" icon={Database} />
+                <TabButton id="database" label="Database & Schema" icon={Database} />
                 <TabButton id="health" label="System Health" icon={Activity} />
             </div>
 
             {/* Content Area */}
-            <div className="flex-1 bg-pidgey-panel border border-pidgey-border rounded-xl overflow-hidden min-h-[600px]">
+            <div className="flex-1 bg-pidgey-panel border border-pidgey-border rounded-xl overflow-hidden flex flex-col">
                 {activeTab === 'general' && (
-                    <div className="p-8 space-y-8">
+                    <div className="p-8 space-y-8 overflow-y-auto">
                         <div>
                             <h2 className="text-xl font-bold mb-4">Brand Configuration</h2>
                             <div className="grid grid-cols-2 gap-6">
@@ -109,7 +110,7 @@ export const Settings = () => {
                 )}
 
                 {activeTab === 'economy' && (
-                    <div className="p-8 space-y-8">
+                    <div className="p-8 space-y-8 overflow-y-auto">
                          {/* 1. Global Rates */}
                          <div>
                             <h2 className="text-xl font-bold mb-4">Engagement Levers</h2>
@@ -197,31 +198,32 @@ export const Settings = () => {
                 )}
                 
                 {activeTab === 'database' && (
-                    <div className="p-8 flex flex-col h-full">
+                    <div className="p-8 flex flex-col h-full overflow-hidden">
                         <div className="flex justify-between items-start mb-6">
                             <div>
                                 <h2 className="text-xl font-bold flex items-center gap-2">
-                                    <Database size={20} className="text-pidgey-muted" /> Schema Management
+                                    <Database size={20} className="text-pidgey-muted" /> Schema & Storage
                                 </h2>
                                 <p className="text-sm text-pidgey-muted mt-1 max-w-lg">
-                                    If you are seeing "Table not found" errors, your Supabase project might be missing the required tables. Copy the SQL below and run it in your Supabase SQL Editor.
+                                    <span className="text-pidgey-accent font-bold">Fix "Column Not Found" Errors:</span><br/> 
+                                    Copy the SQL below and run it in the Supabase SQL Editor to add missing columns (`artist_id`, `artist_name`, `design_config`) and missing tables.
                                 </p>
                             </div>
                             <button 
                                 onClick={handleCopySchema}
-                                className="flex items-center gap-2 px-4 py-2 bg-pidgey-accent text-pidgey-dark font-bold rounded-lg hover:bg-teal-300 transition"
+                                className="flex items-center gap-2 px-4 py-2 bg-pidgey-accent text-pidgey-dark font-bold rounded-lg hover:bg-teal-300 transition shadow-lg shadow-teal-500/20"
                             >
-                                <Copy size={16} /> Copy SQL
+                                <Copy size={16} /> Copy SQL Fix
                             </button>
                         </div>
                         
-                        <div className="flex-1 bg-black/50 border border-pidgey-border rounded-lg p-4 overflow-auto font-mono text-xs text-blue-200 shadow-inner mb-6 max-h-[400px]">
+                        <div className="flex-1 bg-black/50 border border-pidgey-border rounded-lg p-4 overflow-auto font-mono text-xs text-blue-200 shadow-inner mb-6">
                             <pre>{PUBLIC_SCHEMA_DDL}</pre>
                         </div>
 
                          <div className="pt-6 border-t border-pidgey-border">
                             <h3 className="font-bold text-white mb-2 flex items-center gap-2">
-                                <Server size={18} /> Database Seeding
+                                <Server size={18} /> Data Management
                             </h3>
                             <div className="bg-pidgey-dark p-4 rounded-lg border border-pidgey-border flex justify-between items-center">
                                 <div>
@@ -249,7 +251,7 @@ export const Settings = () => {
                 )}
 
                 {activeTab === 'health' && (
-                     <div className="p-8">
+                     <div className="p-8 overflow-y-auto">
                         <div className="flex justify-between items-center mb-8">
                             <div>
                                  <h2 className="text-xl font-bold flex items-center gap-2">

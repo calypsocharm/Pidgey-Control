@@ -33,6 +33,7 @@ export const Drops = () => {
     // Designation Studio Modal State
     const [isDesignationOpen, setIsDesignationOpen] = useState(false);
     const [designatingStamp, setDesignatingStamp] = useState<Stamp | null>(null);
+    const [isSavingDesignation, setIsSavingDesignation] = useState(false);
     
     // AI Filling States
     const [isFillingDrop, setIsFillingDrop] = useState(false);
@@ -240,25 +241,45 @@ export const Drops = () => {
     };
 
     const finalizeDesignation = async () => {
-        if (!designatingStamp || !designatingStamp.id) return;
+        if (!designatingStamp || !designatingStamp.id) {
+            console.error("Designation failed: Missing stamp ID", designatingStamp);
+            alert("Error: Stamp ID missing. Cannot save.");
+            return;
+        }
         
-        // Basic Validation
-        if (!designatingStamp.edition_count || designatingStamp.edition_count < 1) return alert("Please set a valid Edition Count.");
-        if (!designatingStamp.name) return alert("Stamp Name is required.");
+        setIsSavingDesignation(true);
 
-        // Update status to READY
+        // Basic Validation
+        if (!designatingStamp.edition_count || designatingStamp.edition_count < 1) {
+            setIsSavingDesignation(false);
+            return alert("Please set a valid Edition Count.");
+        }
+        if (!designatingStamp.name) {
+            setIsSavingDesignation(false);
+            return alert("Stamp Name is required.");
+        }
+
+        // Sanitize Payload: Remove ID and created_at from body
+        const { id, created_at, ...rest } = designatingStamp;
         const payload = {
-            ...designatingStamp,
-            status: StampStatus.READY
+            ...rest,
+            status: StampStatus.READY,
+            // Ensure numbers are numbers
+            price_eggs: Number(designatingStamp.price_eggs) || 0,
+            edition_count: Number(designatingStamp.edition_count) || 0
         };
+
+        console.log("Saving stamp update:", id, payload);
 
         const { error } = await AdminService.stamps.update(designatingStamp.id, payload);
         
+        setIsSavingDesignation(false);
+
         if (error) {
             alert("Failed to finalize: " + error.message);
         } else {
             // Update local state
-            setAllStamps(prev => prev.map(s => s.id === designatingStamp.id ? { ...s, status: StampStatus.READY, name: designatingStamp.name, edition_count: designatingStamp.edition_count } : s));
+            setAllStamps(prev => prev.map(s => s.id === designatingStamp.id ? { ...s, ...payload } : s));
             setIsDesignationOpen(false);
             
             // Explicit Success Feedback
@@ -402,6 +423,7 @@ export const Drops = () => {
                 onAutoName={handleAutoName}
                 onPidgeyFill={handlePidgeyFillDesignation}
                 isFilling={isFillingDesignation}
+                isSaving={isSavingDesignation}
             />
 
             {/* --- MODAL: DROP CREATOR --- */}

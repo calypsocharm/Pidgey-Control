@@ -119,6 +119,11 @@ export const PidgeyCreations = () => {
                     }
 
                     const payload = sanitizeData(rawPayload, ALLOWED_KEYS.stamp);
+                    
+                    // Safety: Ensure numbers are numbers to prevent string/NaN errors
+                    if (payload.price_eggs !== undefined) payload.price_eggs = Number(payload.price_eggs) || 0;
+                    if (payload.edition_count !== undefined) payload.edition_count = Number(payload.edition_count) || 0;
+
                     result = await AdminService.stamps.create(payload);
                     break;
                 }
@@ -134,14 +139,21 @@ export const PidgeyCreations = () => {
             if (result.error) {
                 console.error("Creation Error:", result.error);
                 
-                // Safe error message extraction
-                const errMsg = result.error.message || JSON.stringify(result.error);
-
-                // Robust check for missing table error
-                if (errMsg.includes('Could not find the table') || errMsg.includes('relation') && errMsg.includes('does not exist')) {
-                    alert(`🚨 DATABASE ERROR: Table not found.\n\nThe '${selectedDraft.type}s' table does not exist in your Supabase database yet.\n\nPlease go to Settings > Database, copy the Schema SQL, and run it in your Supabase SQL Editor.`);
+                // Detailed Schema Error Handling
+                let errMsg = "Unknown error occurred.";
+                
+                if (typeof result.error === 'object') {
+                    if (result.error.message) errMsg = result.error.message;
+                    else if (result.error.details) errMsg = result.error.details;
+                    else errMsg = JSON.stringify(result.error);
                 } else {
-                    alert(`Error creating item: ${errMsg}`);
+                    errMsg = String(result.error);
+                }
+
+                if (errMsg.includes('artist_name') || errMsg.includes('artist_id') || errMsg.includes('design_config') || errMsg.includes('does not exist')) {
+                     alert(`🚨 DATABASE SCHEMA OUTDATED\n\nYour database is missing required columns (like 'artist_id' or 'design_config').\n\n👉 PLEASE GO TO SETTINGS > DATABASE, CLICK 'COPY SQL', and run it in Supabase.\n\nTechnical Error:\n${errMsg}`);
+                } else {
+                     alert(`❌ Creation Failed\n\n${errMsg}`);
                 }
             } else {
                 // Success!
@@ -149,7 +161,7 @@ export const PidgeyCreations = () => {
                 setSelectedDraft(null);
                 
                 if (selectedDraft.type === 'stamp') {
-                    if(confirm(`✅ Stamp "${formData.name}" Approved!\n\nIt has been sent to the Stamp Inventory (Draft).\n\nWould you like to go to the Designation Studio to set its Supply & Price now?`)) {
+                    if(confirm(`✅ Stamp "${formData.name}" Approved!\n\nIt is now in your Stamp Inventory (Status: Draft).\n\nGo to 'Drops & Stamps' -> 'Stamp Library' to set its Supply & Price.`)) {
                         navigate('/drops');
                     }
                 } else if (selectedDraft.type === 'drop') {
@@ -161,7 +173,8 @@ export const PidgeyCreations = () => {
                 }
             }
         } catch (e: any) {
-            alert(`System error: ${e.message}`);
+            console.error("System Error during save:", e);
+            alert(`System error: ${e.message || String(e)}`);
         } finally {
             setIsSaving(false);
         }

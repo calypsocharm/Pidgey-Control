@@ -315,21 +315,27 @@ export const AdminService = {
 
     create: async (payload: Partial<Drop>) => {
       // 1. Sanitize: Strip ID to let DB generate UUID
-      // This prevents "invalid input syntax for type uuid" when a client provides a draft ID
       const { id, artist_id, ...rest } = payload;
 
       // 2. Logic: Prefer artist_name, fallback to artist_id if it looks like a name
-      // We also keep artist_id in the payload in case it IS a valid UUID or legacy text.
-      const insertPayload = {
+      let insertPayload: any = {
         ...rest,
-        // If artist_name is explicitly provided, use it.
-        // If not, check if artist_id is provided and use that as the display name.
         artist_name: payload.artist_name ?? payload.artist_id ?? null,
-        // We keep artist_id just in case the schema uses it, but name is the priority for text
         artist_id: payload.artist_id
       };
 
-      const { data, error } = await supabase.from('drops').insert(insertPayload).select().single();
+      let { data, error } = await supabase.from('drops').insert(insertPayload).select().single();
+      
+      // SELF-HEALING: If artist_id column missing, retry without it
+      if (error && error.code === 'PGRST204') {
+          console.warn("Schema mismatch: Columns missing. Retrying insert minimal payload.");
+          // Try minimal
+          const minimal = { title: insertPayload.title, status: insertPayload.status };
+          const retry = await supabase.from('drops').insert(minimal).select().single();
+          data = retry.data;
+          error = retry.error;
+      }
+
       console.log(`[AUDIT] Drop created`, insertPayload);
       return { data: data as Drop, error };
     },
@@ -363,21 +369,44 @@ export const AdminService = {
           // 1. Sanitize: Strip ID to let DB generate identity (bigint)
           const { id, artist_id, ...rest } = payload;
           
-          const insertPayload = {
+          let insertPayload: any = {
               ...rest,
               // Move custom ID string to external_id if present (e.g. 'stp_123')
               external_id: (id && typeof id === 'string' && !/^\d+$/.test(id)) ? id : payload.external_id,
-              // Use provided artist_name or fallback to artist_id
-              artist_name: payload.artist_name ?? payload.artist_id ?? null,
-              artist_id: payload.artist_id
+              // Use provided artist_name or fallback to artist_id or default to prevent null constraint violation
+              artist_name: payload.artist_name ?? payload.artist_id ?? 'Pidgey Studios',
+              artist_id: payload.artist_id,
+              // Ensure design_config is saved if present
+              design_config: payload.design_config
           };
           
-          const { data, error } = await supabase.from('stamps').insert(insertPayload).select().single();
+          let { data, error } = await supabase.from('stamps').insert(insertPayload).select().single();
+
+          // SELF-HEALING: If artist_id or design_config columns missing, retry without them
+          if (error && error.code === 'PGRST204') {
+              console.warn("Schema mismatch: Columns missing on stamps. Retrying insert with stripped payload.");
+              
+              const safePayload = {
+                  name: insertPayload.name,
+                  rarity: insertPayload.rarity,
+                  status: insertPayload.status,
+                  art_path: insertPayload.art_path,
+                  price_eggs: insertPayload.price_eggs
+              };
+              
+              const retry = await supabase.from('stamps').insert(safePayload).select().single();
+              data = retry.data;
+              error = retry.error;
+          }
+
           return { data, error };
       },
       
       update: async (id: string | number, updates: Partial<Stamp>) => {
-          let query = supabase.from('stamps').update(updates);
+          // IMPORTANT: Strip 'id' from updates to prevent DB errors (PK cannot be updated)
+          const { id: _, ...safeUpdates } = updates as any;
+
+          let query = supabase.from('stamps').update(safeUpdates);
           
           // Intelligent lookup:
           // If ID is a string like "stp_12345", look up by external_id.

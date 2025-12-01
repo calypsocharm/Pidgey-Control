@@ -61,7 +61,7 @@ export const Playground = () => {
     
     const [effectConfig, setEffectConfig] = useState<EffectConfig>({
         type: 'none',
-        intensity: 50
+        intensity: 80
     });
     
     const [borderConfig, setBorderConfig] = useState<BorderConfig>({
@@ -125,7 +125,7 @@ export const Playground = () => {
     const resetEditor = () => {
         setPreviewUrl('');
         setAssetName('');
-        setEffectConfig({ type: 'none', intensity: 50 });
+        setEffectConfig({ type: 'none', intensity: 80 });
         // Default to a nice perforated look for stamps
         setBorderConfig({ 
             enabled: true, 
@@ -438,20 +438,110 @@ export const Playground = () => {
 
     const CANVAS_BG_COLOR = '#0f172a'; // pidgey-dark
 
+    // Dynamic Classes for Effects
+    const getEffectClass = () => {
+        switch(effectConfig.type) {
+            case 'glitch': return 'fx-glitch';
+            case 'glowing': return 'fx-glowing';
+            case '3d': return 'fx-3d';
+            default: return '';
+        }
+    };
+
     return (
         <div className="h-[calc(100vh-8rem)] flex gap-6">
             <style>{`
-                @keyframes snow { 0% { transform: translateY(-10px); opacity: 0; } 20% { opacity: 1; } 100% { transform: translateY(100vh); opacity: 0; } }
-                .fx-snow { position: absolute; top: -10px; width: 100%; height: 100%; pointer-events: none; z-index: 20; background-image: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMCIgaGVpZ2h0PSIxMCI+PGNpcmNsZSBjeD0iNSIgY3k9IjUiIHI9IjIuNSIgZmlsbD0id2hpdGUiIG9wYWNpdHk9IjAuNSIvPjwvc3ZnPg=='); animation: snow 10s linear infinite; }
-                
-                @keyframes glitch { 0% { transform: translate(0); } 20% { transform: translate(-2px, 2px); } 40% { transform: translate(-2px, -2px); } 60% { transform: translate(2px, 2px); } 80% { transform: translate(2px, -2px); } 100% { transform: translate(0); } }
-                .fx-glitch { animation: glitch 0.3s cubic-bezier(.25, .46, .45, .94) both infinite; }
+                /* FOIL */
+                .fx-foil {
+                    background: linear-gradient(45deg, rgba(255,255,255,0) 40%, rgba(255,255,255,0.8) 50%, rgba(255,255,255,0) 60%);
+                    background-size: 200% 200%;
+                    mix-blend-mode: soft-light;
+                    pointer-events: none;
+                }
 
-                @keyframes pulse-slow { 0%, 100% { transform: scale(1); filter: brightness(1); } 50% { transform: scale(1.02); filter: brightness(1.1); } }
-                .fx-pulse { animation: pulse-slow 3s ease-in-out infinite; }
+                /* HOLO FOIL (Iridescent) */
+                @keyframes holo-move {
+                    0% { background-position: 0% 0%; }
+                    100% { background-position: 200% 200%; }
+                }
+                .fx-holo-foil {
+                    background: linear-gradient(135deg, 
+                        rgba(255,0,0,0) 0%, 
+                        rgba(255,0,0,0.4) 10%, 
+                        rgba(255,255,0,0.4) 20%, 
+                        rgba(0,255,0,0.4) 30%, 
+                        rgba(0,255,255,0.4) 40%, 
+                        rgba(0,0,255,0.4) 50%, 
+                        rgba(255,0,255,0.4) 60%, 
+                        rgba(255,0,0,0) 70%
+                    );
+                    background-size: 300% 300%;
+                    mix-blend-mode: color-dodge;
+                    animation: holo-move 4s linear infinite;
+                    pointer-events: none;
+                }
 
-                @keyframes holo { 0% { filter: hue-rotate(0deg); } 100% { filter: hue-rotate(360deg); } }
-                .fx-holographic { animation: holo 8s linear infinite; mix-blend-mode: overlay; opacity: 0.5; }
+                /* SPARKLES */
+                @keyframes sparkle-fade {
+                    0%, 100% { opacity: 0; transform: scale(0.8); }
+                    50% { opacity: 1; transform: scale(1.2); }
+                }
+                .fx-sparkles {
+                    background-image: 
+                        radial-gradient(white 1px, transparent 2px),
+                        radial-gradient(white 1px, transparent 2px),
+                        radial-gradient(white 2px, transparent 3px);
+                    background-size: 50px 50px, 70px 70px, 90px 90px;
+                    background-position: 0 0, 30px 30px, 15px 50px;
+                    animation: sparkle-fade 2s ease-in-out infinite;
+                    mix-blend-mode: screen;
+                    pointer-events: none;
+                }
+
+                /* SHIMMER (Light Sweep) */
+                @keyframes shimmer-sweep {
+                    0% { transform: translateX(-150%) skewX(-25deg); }
+                    100% { transform: translateX(250%) skewX(-25deg); }
+                }
+                .fx-shimmer::after {
+                    content: '';
+                    position: absolute;
+                    top: 0; left: 0; width: 50%; height: 100%;
+                    background: linear-gradient(to right, transparent, rgba(255,255,255,0.8), transparent);
+                    transform: translateX(-150%) skewX(-25deg);
+                    animation: shimmer-sweep 2.5s infinite;
+                    pointer-events: none;
+                    mix-blend-mode: overlay;
+                }
+
+                /* GLITCH */
+                @keyframes glitch-anim {
+                    0% { transform: translate(0); }
+                    20% { transform: translate(-2px, 2px); }
+                    40% { transform: translate(-2px, -2px); }
+                    60% { transform: translate(2px, 2px); }
+                    80% { transform: translate(2px, -2px); }
+                    100% { transform: translate(0); }
+                }
+                .fx-glitch { 
+                    animation: glitch-anim 0.3s infinite;
+                    filter: hue-rotate(90deg) contrast(1.2);
+                }
+
+                /* 3D POP */
+                .fx-3d {
+                    transform: perspective(800px) rotateX(10deg) rotateY(-10deg);
+                    box-shadow: -20px 20px 30px rgba(0,0,0,0.5) !important;
+                }
+
+                /* GLOWING */
+                @keyframes neon-pulse {
+                    0%, 100% { box-shadow: 0 0 10px #fff, 0 0 20px #fff, 0 0 30px #e60073; }
+                    50% { box-shadow: 0 0 15px #fff, 0 0 25px #ff00de, 0 0 40px #ff00de; }
+                }
+                .fx-glowing {
+                    animation: neon-pulse 2s infinite alternate;
+                }
             `}</style>
 
             {/* LEFT: Library */}
@@ -595,13 +685,13 @@ export const Playground = () => {
                             {/* THE COMPOSITION LAYER */}
                             <div className={`relative transition-all duration-300 shadow-2xl ${
                                 mode === 'stamps' 
-                                ? `w-[300px] h-[400px] ${effectConfig.type === 'pulse' ? 'fx-pulse' : ''} ${effectConfig.type === 'glitch' ? 'fx-glitch' : ''}` // Stamp Ratio 3:4
+                                ? `w-[300px] h-[400px] ${getEffectClass()}` // Stamp Ratio 3:4
                                 : `w-[800px] h-[450px]` // Template Ratio 16:9 (Scaled for UI)
                             }`}>
                                 {/* 1. Base Art Layer with Advanced Border */}
                                 <div 
                                     style={mode === 'stamps' && borderConfig.enabled ? getMaterialStyle(borderConfig, CANVAS_BG_COLOR) : { borderRadius: '12px', overflow: 'hidden' }}
-                                    className={`absolute inset-0 transition-all duration-300 ${mode === 'stamps' ? '' : 'rounded-lg shadow-md bg-white'}`}
+                                    className={`absolute inset-0 transition-all duration-300 ${mode === 'stamps' ? '' : 'rounded-lg shadow-md bg-white'} ${effectConfig.type === 'shimmer' ? 'fx-shimmer' : ''}`}
                                 >
                                     <div className="w-full h-full overflow-hidden flex items-center justify-center relative" style={{ 
                                         borderRadius: mode === 'stamps' && borderConfig.enabled ? `${Math.max(2, borderConfig.radius - borderConfig.thickness)}px` : 'inherit',
@@ -628,15 +718,21 @@ export const Playground = () => {
                                     </div>
                                 </div>
 
-                                {/* 2. Effects Layer (Overlay) */}
-                                {effectConfig.type === 'snow' && <div className="fx-snow pointer-events-none rounded-xl" />}
-                                {effectConfig.type === 'rain' && <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/diagonal-stripes.png')] opacity-20 pointer-events-none mix-blend-overlay" />}
-                                {effectConfig.type === 'holographic' && <div className="absolute inset-0 bg-gradient-to-tr from-pink-500/20 via-blue-500/20 to-green-500/20 fx-holographic pointer-events-none rounded-xl" />}
+                                {/* 2. Effects Layer (Overlay) - Respects Container Radius */}
+                                {effectConfig.type === 'foil' && (
+                                    <div className="fx-foil pointer-events-none absolute inset-0 rounded-[inherit] z-20" style={{ opacity: effectConfig.intensity / 100 }} />
+                                )}
+                                {effectConfig.type === 'holo_foil' && (
+                                    <div className="fx-holo-foil pointer-events-none absolute inset-0 rounded-[inherit] z-20" style={{ opacity: effectConfig.intensity / 100 }} />
+                                )}
+                                {effectConfig.type === 'sparkles' && (
+                                    <div className="fx-sparkles pointer-events-none absolute inset-0 rounded-[inherit] z-20" style={{ opacity: effectConfig.intensity / 100 }} />
+                                )}
 
                                 {/* 3. Text Layer */}
                                 {showTextOverlay && (
                                     <div 
-                                        className={`absolute pointer-events-none`}
+                                        className={`absolute pointer-events-none z-30`}
                                         style={{ 
                                             left: `${textConfig.posX}%`, 
                                             top: `${textConfig.posY}%`,

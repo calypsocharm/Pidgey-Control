@@ -11,22 +11,55 @@ interface InventoryViewProps {
     onRefresh: () => void;
 }
 
-const getRarityColor = (r: StampRarity) => {
-    switch(r) {
-        case StampRarity.COMMON: return 'bg-slate-500 text-white';
-        case StampRarity.RARE: return 'bg-blue-500 text-white';
-        case StampRarity.LEGENDARY: return 'bg-yellow-500 text-yellow-900';
-        case StampRarity.PIDGEY: return 'bg-purple-500 text-white';
-        default: return 'bg-gray-500 text-white';
-    }
-};
-
 const getStatusBadge = (status: StampStatus) => {
     switch(status) {
         case StampStatus.DRAFT: return <span className="text-[9px] bg-red-500/20 text-red-400 px-1.5 py-0.5 rounded uppercase font-bold border border-red-500/20 flex items-center gap-1"><AlertOctagon size={10}/> Action Needed</span>;
         case StampStatus.READY: return <span className="text-[9px] bg-green-500/20 text-green-400 px-1.5 py-0.5 rounded uppercase font-bold flex items-center gap-1 border border-green-500/20"><CheckCircle2 size={10}/> Ready for Drop</span>;
         case StampStatus.ACTIVE: return <span className="text-[9px] bg-purple-500/20 text-purple-400 px-1.5 py-0.5 rounded uppercase font-bold border border-purple-500/20">Live</span>;
         default: return null;
+    }
+};
+
+// Visual Rarity Logic
+const getStampVisuals = (r: StampRarity) => {
+    switch(r) {
+        case StampRarity.COMMON: 
+            return {
+                border: 'border-transparent',
+                glow: '',
+                badge: 'bg-slate-500 text-white',
+                container: 'bg-slate-50'
+            };
+        case StampRarity.RARE: 
+            return {
+                border: 'border-yellow-400',
+                glow: '',
+                badge: 'bg-yellow-500 text-yellow-900',
+                container: 'bg-yellow-50'
+            };
+        case StampRarity.FOIL: 
+            return {
+                border: 'border-blue-400',
+                glow: 'shadow-[0_0_15px_rgba(96,165,250,0.5)]',
+                badge: 'bg-blue-500 text-white',
+                container: 'bg-blue-50'
+            };
+        case StampRarity.LEGENDARY: 
+            return {
+                border: 'border-amber-400',
+                glow: 'shadow-[0_0_20px_rgba(251,191,36,0.6)]',
+                badge: 'bg-amber-500 text-white',
+                container: 'bg-amber-50'
+            };
+        case StampRarity.PIDGEY: 
+            return {
+                border: 'border-purple-500',
+                glow: 'shadow-[0_0_25px_rgba(168,85,247,0.7)]',
+                badge: 'bg-purple-600 text-white',
+                container: 'bg-purple-50'
+            };
+        default: 
+            return { border: 'border-transparent', glow: '', badge: 'bg-gray-500', container: 'bg-slate-50' };
     }
 };
 
@@ -110,65 +143,80 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ stamps, loading, o
                         </div>
                     ) : (
                         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 animate-in fade-in duration-300">
-                            {displayedStamps.map(stamp => (
-                                <div 
-                                    key={stamp.id} 
-                                    onClick={() => onSelectStamp(stamp)}
-                                    className={`bg-pidgey-dark border rounded-xl p-3 cursor-pointer hover:-translate-y-1 transition-all group relative shadow-sm ${
-                                        stamp.status === StampStatus.READY 
-                                        ? 'border-green-500/20 hover:border-green-500' 
-                                        : 'border-red-500/20 hover:border-red-500'
-                                    }`}
-                                >
-                                    <div className="aspect-[3/4] bg-white rounded-sm mb-3 flex items-center justify-center overflow-hidden relative border-[6px] border-dotted border-pidgey-dark p-1">
-                                        <div className="w-full h-full bg-slate-100 flex items-center justify-center relative overflow-hidden">
-                                            {stamp.art_path ? <img src={stamp.art_path} className="w-full h-full object-cover" /> : <ImageIcon size={24} className="opacity-20 text-pidgey-dark"/>}
-                                        </div>
-                                        
-                                        {/* Hover Overlay */}
-                                        <div className={`absolute inset-0 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity backdrop-blur-sm z-10 ${
-                                            stamp.status === StampStatus.DRAFT ? 'bg-red-900/40' : 'bg-green-900/40'
-                                        }`}>
-                                            <span className={`text-pidgey-dark text-[10px] font-bold px-2 py-1 rounded shadow-lg uppercase flex items-center gap-1 ${
-                                                stamp.status === StampStatus.DRAFT ? 'bg-red-400' : 'bg-green-400'
+                            {displayedStamps.map(stamp => {
+                                const visuals = getStampVisuals(stamp.rarity);
+                                return (
+                                    <div 
+                                        key={stamp.id} 
+                                        onClick={() => onSelectStamp(stamp)}
+                                        className={`bg-pidgey-dark border rounded-xl p-3 cursor-pointer hover:-translate-y-1 transition-all group relative shadow-sm ${
+                                            stamp.status === StampStatus.READY 
+                                            ? 'border-green-500/20 hover:border-green-500' 
+                                            : 'border-red-500/20 hover:border-red-500'
+                                        }`}
+                                    >
+                                        {/* STAMP VISUAL */}
+                                        <div className="aspect-[3/4] bg-white rounded-sm mb-3 flex items-center justify-center overflow-hidden relative border-[6px] border-dotted border-pidgey-dark p-1">
+                                            
+                                            {/* Rarity Inner Frame */}
+                                            <div className={`w-full h-full relative overflow-hidden border-[3px] transition-all duration-500 ${visuals.border} ${visuals.glow} ${visuals.container}`}>
+                                                {stamp.art_path ? (
+                                                    <img src={stamp.art_path} className="w-full h-full object-cover" />
+                                                ) : (
+                                                    <ImageIcon size={24} className="opacity-20 text-pidgey-dark m-auto"/>
+                                                )}
+                                                
+                                                {/* Foil/Shine Effects */}
+                                                {(stamp.rarity === StampRarity.FOIL || stamp.rarity === StampRarity.LEGENDARY || stamp.rarity === StampRarity.PIDGEY) && (
+                                                    <div className="absolute inset-0 bg-gradient-to-tr from-white/20 to-transparent opacity-50 pointer-events-none mix-blend-overlay"></div>
+                                                )}
+                                            </div>
+                                            
+                                            {/* Hover Overlay */}
+                                            <div className={`absolute inset-0 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity backdrop-blur-sm z-10 ${
+                                                stamp.status === StampStatus.DRAFT ? 'bg-red-900/40' : 'bg-green-900/40'
                                             }`}>
-                                                {stamp.status === StampStatus.DRAFT ? 'Designate' : 'Edit'} <ArrowRight size={10} />
-                                            </span>
+                                                <span className={`text-pidgey-dark text-[10px] font-bold px-2 py-1 rounded shadow-lg uppercase flex items-center gap-1 ${
+                                                    stamp.status === StampStatus.DRAFT ? 'bg-red-400' : 'bg-green-400'
+                                                }`}>
+                                                    {stamp.status === StampStatus.DRAFT ? 'Designate' : 'Edit'} <ArrowRight size={10} />
+                                                </span>
+                                            </div>
+
+                                            {/* Status Icon */}
+                                            {stamp.status === StampStatus.READY && (
+                                                <div className="absolute top-1 right-1 bg-green-500 text-pidgey-dark p-0.5 rounded-full shadow-md z-10">
+                                                    <CheckCircle2 size={10} />
+                                                </div>
+                                            )}
+                                            {stamp.status === StampStatus.DRAFT && (
+                                                <div className="absolute top-1 right-1 bg-red-500 text-white p-0.5 rounded-full shadow-md z-10 animate-pulse">
+                                                    <AlertOctagon size={10} />
+                                                </div>
+                                            )}
+
+                                            {/* DELETE BUTTON */}
+                                            <button 
+                                                onClick={(e) => onDeleteStamp(e, stamp)}
+                                                className="absolute top-1 left-1 p-1.5 bg-red-500/80 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity z-20 hover:bg-red-600 shadow-md"
+                                                title="Delete Stamp"
+                                            >
+                                                <Trash2 size={12} />
+                                            </button>
                                         </div>
-
-                                        {/* Status Icon */}
-                                        {stamp.status === StampStatus.READY && (
-                                            <div className="absolute top-1 right-1 bg-green-500 text-pidgey-dark p-0.5 rounded-full shadow-md z-10">
-                                                <CheckCircle2 size={10} />
-                                            </div>
+                                        <div className="font-bold text-xs truncate text-white mb-1" title={stamp.name}>{stamp.name}</div>
+                                        <div className="flex justify-between items-center mb-2">
+                                             <span className={`text-[9px] px-1.5 rounded uppercase font-bold ${visuals.badge}`}>{stamp.rarity}</span>
+                                        </div>
+                                        {getStatusBadge(stamp.status)}
+                                        {stamp.edition_count ? (
+                                             <div className="mt-2 text-[9px] text-pidgey-muted font-mono">Supply: {stamp.edition_count}</div>
+                                        ) : (
+                                            <div className="mt-2 text-[9px] text-red-400 font-bold flex items-center gap-1"><AlertOctagon size={8}/> Set Supply</div>
                                         )}
-                                        {stamp.status === StampStatus.DRAFT && (
-                                            <div className="absolute top-1 right-1 bg-red-500 text-white p-0.5 rounded-full shadow-md z-10 animate-pulse">
-                                                <AlertOctagon size={10} />
-                                            </div>
-                                        )}
-
-                                        {/* DELETE BUTTON */}
-                                        <button 
-                                            onClick={(e) => onDeleteStamp(e, stamp)}
-                                            className="absolute top-1 left-1 p-1.5 bg-red-500/80 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity z-20 hover:bg-red-600 shadow-md"
-                                            title="Delete Stamp"
-                                        >
-                                            <Trash2 size={12} />
-                                        </button>
                                     </div>
-                                    <div className="font-bold text-xs truncate text-white mb-1" title={stamp.name}>{stamp.name}</div>
-                                    <div className="flex justify-between items-center mb-2">
-                                         <span className={`text-[9px] px-1.5 rounded uppercase font-bold ${getRarityColor(stamp.rarity)}`}>{stamp.rarity}</span>
-                                    </div>
-                                    {getStatusBadge(stamp.status)}
-                                    {stamp.edition_count ? (
-                                         <div className="mt-2 text-[9px] text-pidgey-muted font-mono">Supply: {stamp.edition_count}</div>
-                                    ) : (
-                                        <div className="mt-2 text-[9px] text-red-400 font-bold flex items-center gap-1"><AlertOctagon size={8}/> Set Supply</div>
-                                    )}
-                                </div>
-                            ))}
+                                );
+                            })}
                         </div>
                     )}
                 </div>

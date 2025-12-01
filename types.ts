@@ -353,7 +353,7 @@ export interface TextConfig {
 }
 
 export interface EffectConfig {
-    type: 'none' | 'snow' | 'rain' | 'confetti' | 'glitch' | 'pulse' | 'holographic';
+    type: 'none' | 'foil' | 'glowing' | 'holo_foil' | 'glitch' | '3d' | 'sparkles' | 'shimmer';
     intensity: number;
 }
 

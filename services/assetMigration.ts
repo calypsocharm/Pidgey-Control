@@ -138,17 +138,15 @@ export const runConnectionTest = async (onLog: (msg: string) => void) => {
     onLog("🧪 Starting Connectivity Test...");
     
     // 1. Create a dummy blob
-    const dummyBlob = new Blob(["Pidgey Connectivity Test"], { type: 'text/plain' });
     const timestamp = Date.now();
     const testPath = `test_connectivity_${timestamp}.txt`;
     
     const testItems: MigrationItem[] = [
-        // A. Test Internal Copy (if stamp exists) - requires valid existing file, skipping for generic test
-        // B. Test External Fetch & Upload
+        // Test External Fetch & Upload with a reliable image
         { 
-            srcUrl: 'https://picsum.photos/200', // Reliable CORS-friendly source
+            srcUrl: 'https://picsum.photos/seed/pidgey_test/200/200', 
             dstBucket: 'assets', 
-            dstPath: `tests/picsum_${timestamp}.jpg`,
+            dstPath: `tests/connection_test_${timestamp}.jpg`,
             contentType: 'image/jpeg'
         }
     ];
@@ -170,13 +168,10 @@ export const runConnectionTest = async (onLog: (msg: string) => void) => {
 export const migrateAssets = async (onLog: (msg: string) => void) => {
     onLog("📦 Preparing Asset Manifest...");
     
-    // 1. Ensure Buckets Exist (Blind Create)
+    // 1. Ensure Buckets Exist (Blind Create - handled by Schema normally, just logging)
     const buckets = ['stamps', 'templates', 'assets', 'public_stamps'];
     for (const b of buckets) {
-        // We attempt to create; if it fails (already exists), we ignore.
-        // Note: Client-side creation often fails due to permissions. 
-        // We assume buckets exist or user uses SQL schema to create them.
-        onLog(`🔹 Checking bucket: ${b}`);
+        onLog(`🔹 Checking target bucket: ${b}`);
     }
 
     // 2. Build Migration List
@@ -204,7 +199,8 @@ export const migrateAssets = async (onLog: (msg: string) => void) => {
             items.push({
                 srcUrl: a.url,
                 dstBucket: bucket,
-                dstPath: a.name
+                dstPath: a.name,
+                contentType: 'image/jpeg' // Default assumption
             });
         }
     });
@@ -221,7 +217,26 @@ export const migrateAssets = async (onLog: (msg: string) => void) => {
         }
     });
 
-    // 3. Execute
+    // 3. ADD FALLBACK PLACEHOLDERS (To fill "missing" slots)
+    // If a user hasn't uploaded anything, these ensure the file browser isn't empty.
+    const placeholders = [
+        { name: 'placeholder_stamp_base.png', bucket: 'stamps', url: 'https://picsum.photos/seed/stamp_base/300/400' },
+        { name: 'placeholder_banner.jpg', bucket: 'assets', url: 'https://picsum.photos/seed/banner_default/800/200' },
+        { name: 'template_birthday.jpg', bucket: 'templates', url: 'https://picsum.photos/seed/bday_template/800/600' },
+        { name: 'template_thankyou.jpg', bucket: 'templates', url: 'https://picsum.photos/seed/thankyou/800/600' },
+        { name: 'logo_pidgey.png', bucket: 'assets', url: 'https://picsum.photos/seed/pidgey_logo/200/200' },
+    ];
+
+    placeholders.forEach(p => {
+        items.push({
+            srcUrl: p.url,
+            dstBucket: p.bucket,
+            dstPath: `defaults/${p.name}`,
+            contentType: p.name.endsWith('.png') ? 'image/png' : 'image/jpeg'
+        });
+    });
+
+    // 4. Execute
     const results = await migrateObjects(items, onLog);
     
     const success = results.filter(r => r.ok).length;

@@ -25,10 +25,24 @@ const getDestinationHint = (type: string) => {
     }
 };
 
+// Visual Rarity Helper
+const getStampVisuals = (r: StampRarity) => {
+    switch(r) {
+        case StampRarity.COMMON: return { border: 'border-transparent', glow: '', badge: 'bg-slate-500 text-white', container: 'bg-slate-50' };
+        case StampRarity.RARE: return { border: 'border-yellow-400', glow: '', badge: 'bg-yellow-500 text-yellow-900', container: 'bg-yellow-50' };
+        case StampRarity.FOIL: return { border: 'border-blue-400', glow: 'shadow-[0_0_15px_rgba(96,165,250,0.5)]', badge: 'bg-blue-500 text-white', container: 'bg-blue-50' };
+        case StampRarity.LEGENDARY: return { border: 'border-amber-400', glow: 'shadow-[0_0_20px_rgba(251,191,36,0.6)]', badge: 'bg-amber-500 text-white', container: 'bg-amber-50' };
+        case StampRarity.PIDGEY: return { border: 'border-purple-500', glow: 'shadow-[0_0_25px_rgba(168,85,247,0.7)]', badge: 'bg-purple-600 text-white', container: 'bg-purple-50' };
+        default: return { border: 'border-transparent', glow: '', badge: 'bg-gray-500', container: 'bg-slate-50' };
+    }
+};
+
 export const ApprovalModal: React.FC<ApprovalModalProps> = ({ 
     draft, formData, setFormData, onClose, onSave, onPidgeyFill, isFilling, isSaving 
 }) => {
     if (!draft) return null;
+
+    const stampVisuals = draft.type === 'stamp' ? getStampVisuals(formData.rarity as StampRarity) : null;
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in duration-200">
@@ -57,17 +71,21 @@ export const ApprovalModal: React.FC<ApprovalModalProps> = ({
                 <div className="flex-1 overflow-y-auto p-8 space-y-8 bg-pidgey-panel">
                     
                     {/* STAMP EDITOR */}
-                    {draft.type === 'stamp' && (
+                    {draft.type === 'stamp' && stampVisuals && (
                         <div className="flex gap-8">
                             {/* Left: Preview */}
                             <div className="w-1/3 flex items-center justify-center bg-pidgey-dark rounded-2xl border border-pidgey-border p-6 relative">
                                     <div className="aspect-[3/4] w-full flex items-center justify-center relative shadow-2xl transition-all bg-white p-1 rounded-sm border-[6px] border-dotted border-pidgey-dark">
-                                        <div className="w-full h-full bg-slate-100 flex items-center justify-center relative overflow-hidden">
+                                        <div className={`w-full h-full relative overflow-hidden border-[3px] transition-all ${stampVisuals.border} ${stampVisuals.glow} ${stampVisuals.container}`}>
                                             <img src={formData.art_path} className="w-full h-full object-cover" 
                                             onError={(e) => (e.target as HTMLImageElement).src='https://via.placeholder.com/300x400'}
                                             />
+                                            {/* Glows */}
+                                            {(formData.rarity === StampRarity.FOIL || formData.rarity === StampRarity.LEGENDARY || formData.rarity === StampRarity.PIDGEY) && (
+                                                <div className="absolute inset-0 bg-gradient-to-tr from-white/20 to-transparent opacity-50 pointer-events-none mix-blend-overlay"></div>
+                                            )}
                                         </div>
-                                        <div className="absolute bottom-3 right-3 px-3 py-1 bg-black/60 backdrop-blur-md rounded-lg text-[10px] text-white uppercase font-bold tracking-wider shadow-sm">{formData.rarity}</div>
+                                        <div className={`absolute bottom-3 right-3 px-3 py-1 rounded-lg text-[10px] text-white uppercase font-bold tracking-wider shadow-sm ${stampVisuals.badge}`}>{formData.rarity}</div>
                                     </div>
                             </div>
                             
