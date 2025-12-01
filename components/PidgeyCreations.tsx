@@ -49,6 +49,9 @@ export const PidgeyCreations = () => {
         // Initialize form data based on draft type
         const initialData = { ...draft.data };
         
+        // Helper to check if string looks like UUID
+        const isUUID = (str: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
+
         // Defaults for specific types if missing
         if (draft.type === 'stamp') {
             initialData.price_eggs = initialData.price_eggs || 50;
@@ -56,10 +59,23 @@ export const PidgeyCreations = () => {
             initialData.rarity = initialData.rarity || StampRarity.COMMON;
             initialData.collection = initialData.collection || 'General';
             initialData.status = StampStatus.DRAFT; // Default to draft for Inventory
-            initialData.artist_id = initialData.artist_id || 'Pidgey Studios';
+            
+            // Fix: Map Artist Name correctly. Don't put text in artist_id if it requires UUID.
+            initialData.artist_name = initialData.artist_name || initialData.artist_id || 'Pidgey Studios';
+            
+            // If artist_id is text (like "Pidgey Studios"), clear it so it doesn't cause DB error
+            if (initialData.artist_id && !isUUID(initialData.artist_id)) {
+                initialData.artist_id = null;
+            }
         } else if (draft.type === 'drop') {
             initialData.status = DropStatus.DRAFT;
             initialData.egg_price = initialData.egg_price || 1;
+            
+            // Fix for drops too
+            initialData.artist_name = initialData.artist_name || initialData.artist_id || 'Pidgey Studios';
+            if (initialData.artist_id && !isUUID(initialData.artist_id)) {
+                initialData.artist_id = null;
+            }
         }
 
         setFormData(initialData);
@@ -118,6 +134,12 @@ export const PidgeyCreations = () => {
                         delete rawPayload.id;
                     }
 
+                    // Strict UUID check for artist_id before sending
+                    const isUUID = (str: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
+                    if (rawPayload.artist_id && !isUUID(rawPayload.artist_id)) {
+                        delete rawPayload.artist_id; // Remove invalid ID, rely on artist_name
+                    }
+
                     const payload = sanitizeData(rawPayload, ALLOWED_KEYS.stamp);
                     
                     // Safety: Ensure numbers are numbers to prevent string/NaN errors
@@ -152,6 +174,8 @@ export const PidgeyCreations = () => {
 
                 if (errMsg.includes('artist_name') || errMsg.includes('artist_id') || errMsg.includes('design_config') || errMsg.includes('does not exist')) {
                      alert(`🚨 DATABASE SCHEMA OUTDATED\n\nYour database is missing required columns (like 'artist_id' or 'design_config').\n\n👉 PLEASE GO TO SETTINGS > DATABASE, CLICK 'COPY SQL', and run it in Supabase.\n\nTechnical Error:\n${errMsg}`);
+                } else if (errMsg.includes('uuid')) {
+                     alert(`🚨 INVALID UUID FORMAT\n\nThe database expects a valid UUID for 'artist_id'. Please ensure you aren't sending text into a UUID field. The app has attempted to auto-correct this, but the error persists.\n\nError: ${errMsg}`);
                 } else {
                      alert(`❌ Creation Failed\n\n${errMsg}`);
                 }

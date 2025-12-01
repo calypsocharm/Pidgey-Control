@@ -22,6 +22,11 @@ const safeUUID = () => {
   });
 };
 
+// Check if string is a valid UUID
+const isValidUUID = (uuid: string) => {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(uuid);
+};
+
 // --- URL & PATH HELPERS ---
 
 /**
@@ -392,6 +397,11 @@ export const AdminService = {
         banner_path: cleanStorageUrl(payload.banner_path, 'assets')
       };
 
+      // Check artist_id validity
+      if (insertPayload.artist_id && !isValidUUID(insertPayload.artist_id)) {
+          delete insertPayload.artist_id;
+      }
+
       let { data, error } = await supabase.from('drops').insert(insertPayload).select().single();
       
       // SELF-HEALING: If artist_id column missing, retry without it
@@ -476,6 +486,13 @@ export const AdminService = {
               // IMPORTANT: Save CLEAN Path to DB
               art_path: cleanStorageUrl(payload.art_path, 'stamps')
           };
+
+          // CRITICAL FIX: If artist_id is not a valid UUID, remove it.
+          // This prevents "invalid input syntax for type uuid: 'Pidgey Studios'" errors.
+          if (insertPayload.artist_id && !isValidUUID(insertPayload.artist_id)) {
+              console.warn(`[Stamp Create] Sanitizing artist_id: "${insertPayload.artist_id}" is not a UUID. Removing from payload.`);
+              delete insertPayload.artist_id;
+          }
           
           let { data, error } = await supabase.from('stamps').insert(insertPayload).select().single();
 
