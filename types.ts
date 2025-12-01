@@ -325,6 +325,18 @@ export interface CreationDraft {
   summary: string;
 }
 
+// Timeline Event (Shared)
+export interface TimelineEvent {
+    id: string;
+    type: 'transaction' | 'log' | 'ticket' | 'card';
+    date: string;
+    title: string;
+    description?: string;
+    amount?: number;
+    status?: string;
+    meta?: any;
+}
+
 // --- STUDIO CONFIGURATION TYPES ---
 
 export interface TextConfig {

@@ -7,6 +7,7 @@ import { useJarvis } from '../JarvisContext';
 import { useAuth } from '../AuthContext';
 import { useSafeMode } from '../SafeModeContext';
 import { useTheme } from '../ThemeContext';
+import { AdminService } from '../services/adminService';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -42,22 +43,22 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
   const { isSafeMode, toggleSafeMode } = useSafeMode();
   const { theme, toggleTheme } = useTheme();
   
-  // Simulated System Pulse
+  // Real System Pulse
   const [systemHealth, setSystemHealth] = useState<'healthy' | 'error'>('healthy');
-  const [lastLog, setLastLog] = useState('System operational');
+  const [latency, setLatency] = useState(0);
 
   useEffect(() => {
-    // Randomly generate "activity"
-    const interval = setInterval(() => {
-        const r = Math.random();
-        if (r > 0.95) {
-            setSystemHealth('error');
-            setLastLog('⚠️ Webhook timeout: smtp2go-relay');
-            setTimeout(() => setSystemHealth('healthy'), 4000);
-        } else if (r > 0.7) {
-            setLastLog('Info: Batch email job completed (140ms)');
-        }
-    }, 5000);
+    // Real Ping Check
+    const checkHealth = async () => {
+        const start = Date.now();
+        await AdminService.health.getSystem(); // Use real service
+        const end = Date.now();
+        setLatency(end - start);
+        setSystemHealth('healthy');
+    };
+    
+    checkHealth();
+    const interval = setInterval(checkHealth, 30000); // Check every 30s
     return () => clearInterval(interval);
   }, []);
 
@@ -179,13 +180,13 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
         <div className="absolute bottom-4 left-8 right-8 h-10 bg-pidgey-dark/80 backdrop-blur-md border border-pidgey-glass-border rounded-full flex items-center px-6 justify-between text-[10px] uppercase font-bold tracking-wider z-20 shadow-lg">
             <div className="flex items-center gap-3">
                 <div className={`w-2 h-2 rounded-full ${systemHealth === 'healthy' ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]' : 'bg-red-500 animate-ping'}`}></div>
-                <span className={systemHealth === 'healthy' ? 'text-pidgey-muted' : 'text-red-400'}>
-                    {lastLog}
+                <span className="text-pidgey-muted">
+                    System Operational
                 </span>
             </div>
             <div className="flex items-center gap-4 text-pidgey-muted">
-                <span className="flex items-center gap-1"><Zap size={12} className="text-yellow-400" /> 14ms latency</span>
-                <span>v4.0.0-Dreamy</span>
+                <span className="flex items-center gap-1"><Zap size={12} className="text-yellow-400" /> {latency}ms latency</span>
+                <span>v4.0.0-Ready</span>
             </div>
         </div>
 
