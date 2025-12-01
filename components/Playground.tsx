@@ -388,7 +388,7 @@ export const Playground = () => {
             borderRadius: `${config.radius}px`,
         };
 
-        // --- Perforated Logic ---
+        // --- Perforated Logic (Inverse Dot Trick) ---
         if (config.style === 'perforated') {
             const bg = config.material !== 'none' ? getMaterialBackground(config.material) : config.color;
             // ART CONTAINMENT LOGIC
@@ -397,8 +397,9 @@ export const Playground = () => {
             return {
                 ...baseStyle,
                 background: bg,
+                // The border matches the container BG (bg) to look like holes.
                 border: `${config.thickness}px dotted ${canvasBg}`,
-                backgroundClip: 'border-box',
+                backgroundClip: 'padding-box', // CRITICAL FIX: Stops bg inside border, allowing dots to reveal canvasBg
                 boxShadow: 'none',
                 filter: config.glowIntensity > 0 ? `drop-shadow(0 0 ${config.glowIntensity}px ${config.glowColor})` : 'none',
                 padding: `${safePadding}px`
