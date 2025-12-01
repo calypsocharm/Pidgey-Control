@@ -62,7 +62,8 @@ CREATE TABLE public.drops (
   egg_price int default 0,
   bundle_price int default 0,
   max_supply int,
-  artist_id text,
+  artist_id text, -- Legacy/Reference ID
+  artist_name text, -- Free-form text for display
   banner_path text,
   start_at timestamptz,
   end_at timestamptz,
@@ -78,7 +79,8 @@ CREATE TABLE public.stamps (
   rarity text,
   status text, -- draft, ready, active, archived
   collection text,
-  artist_id text,
+  artist_id text, -- Legacy/Reference ID
+  artist_name text, -- Free-form text for display
   art_path text, -- URL to the file in storage
   price_eggs int default 0,
   edition_count int default 0, -- Max supply for this stamp
@@ -129,4 +131,18 @@ CREATE TABLE public.promos (
 -- 2) Add/Update Check Constraint
 -- ALTER TABLE public.profiles DROP CONSTRAINT IF EXISTS profiles_status_check;
 -- ALTER TABLE public.profiles ADD CONSTRAINT profiles_status_check CHECK (status IN ('active', 'inactive', 'banned', 'pending', 'suspended'));
+
+-- 3) ARTIST NAME MIGRATION (Crucial for saving names without UUID errors)
+-- ALTER TABLE public.drops ADD COLUMN IF NOT EXISTS artist_name text;
+-- ALTER TABLE public.stamps ADD COLUMN IF NOT EXISTS artist_name text;
+-- UPDATE public.drops SET artist_name = COALESCE(artist_name, artist_id) WHERE artist_id IS NOT NULL AND artist_name IS NULL;
+-- UPDATE public.stamps SET artist_name = COALESCE(artist_name, artist_id) WHERE artist_id IS NOT NULL AND artist_name IS NULL;
+
+-- 4) RLS POLICIES (If RLS is enabled)
+-- GRANT USAGE ON SCHEMA public TO authenticated;
+-- GRANT SELECT, INSERT, UPDATE ON public.drops, public.stamps TO authenticated;
+-- CREATE POLICY "drops_read_all" ON public.drops FOR SELECT TO authenticated USING (true);
+-- CREATE POLICY "drops_insert_all" ON public.drops FOR INSERT TO authenticated WITH CHECK (true);
+-- CREATE POLICY "stamps_read_all" ON public.stamps FOR SELECT TO authenticated USING (true);
+-- CREATE POLICY "stamps_insert_all" ON public.stamps FOR INSERT TO authenticated WITH CHECK (true);
 `;

@@ -243,6 +243,7 @@ export interface Stamp {
   status: StampStatus;
   collection?: string;
   artist_id?: string;
+  artist_name?: string; // New free-form name
   price_eggs?: number;
   edition_count?: number; // Total supply
   is_drop_only?: boolean;
@@ -256,6 +257,7 @@ export interface Drop {
   title: string;
   description: string;
   artist_id: string;
+  artist_name?: string; // New free-form name
   egg_price: number;
   bundle_price?: number; // Price to buy the whole collection
   max_supply?: number;

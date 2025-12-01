@@ -77,6 +77,15 @@ export const DropCreatorModal: React.FC<DropCreatorModalProps> = ({
                                     placeholder="e.g. Winter Wonderland"
                                 />
                             </div>
+                            <div>
+                                <label className="block text-xs font-bold text-pidgey-muted uppercase mb-1">Artist Name</label>
+                                <input 
+                                    className="w-full bg-pidgey-dark border border-pidgey-border rounded-lg p-2.5 text-white focus:border-pidgey-accent outline-none"
+                                    value={drop.artist_name || ''}
+                                    onChange={e => onUpdate({ artist_name: e.target.value })}
+                                    placeholder="e.g. Pidgey Studios"
+                                />
+                            </div>
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <label className="block text-xs font-bold text-pidgey-muted uppercase mb-1">Single Price</label>

@@ -118,6 +118,16 @@ export const DesignationModal: React.FC<DesignationModalProps> = ({
                             </div>
                         </div>
 
+                        <div>
+                            <label className="block text-xs font-bold text-pidgey-muted uppercase mb-1">Artist Name</label>
+                            <input 
+                                className="w-full bg-pidgey-dark border border-pidgey-border rounded-lg p-2.5 text-white outline-none"
+                                value={stamp.artist_name || ''}
+                                onChange={e => onUpdate({ artist_name: e.target.value })}
+                                placeholder="e.g. Pidgey Studios"
+                            />
+                        </div>
+
                         <div className="bg-pidgey-dark rounded-xl p-4 border border-pidgey-border">
                             <h3 className="text-xs font-bold text-white uppercase mb-3 flex items-center gap-2"><Tag size={14}/> Supply & Value</h3>
                             <div className="grid grid-cols-2 gap-4">

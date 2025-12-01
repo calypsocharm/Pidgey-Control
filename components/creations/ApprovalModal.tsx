@@ -103,11 +103,11 @@ export const ApprovalModal: React.FC<ApprovalModalProps> = ({
                                     </div>
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-bold text-pidgey-muted uppercase mb-1.5 ml-1 flex items-center gap-1"><User size={12}/> Artist ID</label>
+                                    <label className="block text-xs font-bold text-pidgey-muted uppercase mb-1.5 ml-1 flex items-center gap-1"><User size={12}/> Artist Name</label>
                                     <input 
                                         className="w-full bg-pidgey-dark border border-pidgey-border rounded-xl p-3 text-pidgey-text text-sm focus:border-pidgey-accent outline-none font-mono text-xs"
-                                        value={formData.artist_id || ''}
-                                        onChange={e => setFormData({...formData, artist_id: e.target.value})}
+                                        value={formData.artist_name || ''}
+                                        onChange={e => setFormData({...formData, artist_name: e.target.value})}
                                         placeholder="e.g. Pidgey Studios"
                                     />
                                 </div>

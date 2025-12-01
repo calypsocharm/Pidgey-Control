@@ -21,8 +21,8 @@ const sanitizeData = (data: any, allowedKeys: string[]) => {
 
 // allowed keys for each table to prevent "column not found" errors
 const ALLOWED_KEYS = {
-    drop: ['title', 'description', 'status', 'egg_price', 'bundle_price', 'max_supply', 'artist_id', 'banner_path', 'start_at', 'end_at'],
-    stamp: ['id', 'external_id', 'name', 'slug', 'rarity', 'status', 'collection', 'artist_id', 'art_path', 'price_eggs', 'edition_count', 'is_drop_only', 'design_config'],
+    drop: ['title', 'description', 'status', 'egg_price', 'bundle_price', 'max_supply', 'artist_id', 'artist_name', 'banner_path', 'start_at', 'end_at'],
+    stamp: ['id', 'external_id', 'name', 'slug', 'rarity', 'status', 'collection', 'artist_id', 'artist_name', 'art_path', 'price_eggs', 'edition_count', 'is_drop_only', 'design_config'],
     broadcast: ['name', 'subject', 'channels', 'audience_segment', 'audience_size', 'scheduled_at', 'status', 'stats'],
     promo: ['name', 'code', 'type', 'status', 'description', 'value', 'start_at', 'end_at', 'usage_count'],
     member: ['email', 'full_name', 'role', 'tier', 'egg_balance', 'status', 'id', 'created_at', 'last_seen']

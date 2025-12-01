@@ -313,9 +313,24 @@ export const AdminService = {
       return { data: (data as Drop[]) || [], count: count || 0, error };
     },
 
-    create: async (drop: Omit<Drop, 'id' | 'created_at'>) => {
-      const { data, error } = await supabase.from('drops').insert(drop).select().single();
-      console.log(`[AUDIT] Drop created`, drop);
+    create: async (payload: Partial<Drop>) => {
+      // 1. Sanitize: Strip ID to let DB generate UUID
+      // This prevents "invalid input syntax for type uuid" when a client provides a draft ID
+      const { id, artist_id, ...rest } = payload;
+
+      // 2. Logic: Prefer artist_name, fallback to artist_id if it looks like a name
+      // We also keep artist_id in the payload in case it IS a valid UUID or legacy text.
+      const insertPayload = {
+        ...rest,
+        // If artist_name is explicitly provided, use it.
+        // If not, check if artist_id is provided and use that as the display name.
+        artist_name: payload.artist_name ?? payload.artist_id ?? null,
+        // We keep artist_id just in case the schema uses it, but name is the priority for text
+        artist_id: payload.artist_id
+      };
+
+      const { data, error } = await supabase.from('drops').insert(insertPayload).select().single();
+      console.log(`[AUDIT] Drop created`, insertPayload);
       return { data: data as Drop, error };
     },
 
@@ -344,29 +359,20 @@ export const AdminService = {
           return { data: (data as Stamp[]) || [], count: count || 0, error };
       },
       
-      create: async (stamp: any) => {
-          const payload = { ...stamp };
+      create: async (payload: any) => {
+          // 1. Sanitize: Strip ID to let DB generate identity (bigint)
+          const { id, artist_id, ...rest } = payload;
           
-          // Safe ID Handling: If string ID provided (e.g. 'stp_...'), move to external_id
-          // and let DB generate numeric ID.
-          // This allows clients to propose IDs (drafts) without breaking BigInt column.
-          if (payload.id && typeof payload.id === 'string' && !/^\d+$/.test(payload.id)) {
-              payload.external_id = payload.id;
-              delete payload.id; 
-          }
+          const insertPayload = {
+              ...rest,
+              // Move custom ID string to external_id if present (e.g. 'stp_123')
+              external_id: (id && typeof id === 'string' && !/^\d+$/.test(id)) ? id : payload.external_id,
+              // Use provided artist_name or fallback to artist_id
+              artist_name: payload.artist_name ?? payload.artist_id ?? null,
+              artist_id: payload.artist_id
+          };
           
-          // Note: If payload.id is a numeric string (e.g. "123"), Postgres might accept it for bigint,
-          // but usually we want to delete it to let the identity column auto-increment.
-          // We assume "numeric strings" should also be treated as external_id if passed explicitly,
-          // unless we are doing a migration/restore. For safety in this app context:
-          if (payload.id && typeof payload.id === 'string' && /^\d+$/.test(payload.id)) {
-               // Optional: Decide whether to treat as ID or external. 
-               // For now, we trust the DB to auto-inc, so we remove it.
-               // payload.external_id = payload.id; 
-               // delete payload.id;
-          }
-          
-          const { data, error } = await supabase.from('stamps').insert(payload).select().single();
+          const { data, error } = await supabase.from('stamps').insert(insertPayload).select().single();
           return { data, error };
       },
       
