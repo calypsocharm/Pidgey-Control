@@ -192,4 +192,14 @@ CREATE POLICY "Authenticated Delete"
 ON storage.objects FOR DELETE
 TO authenticated
 USING ( bucket_id IN ('stamps', 'templates', 'assets', 'public_stamps') );
+
+-------------------------------------------------------------------------------
+-- MIGRATION: ADD ARTIST NAME (Run if missing)
+-------------------------------------------------------------------------------
+ALTER TABLE public.drops ADD COLUMN IF NOT EXISTS artist_name text;
+ALTER TABLE public.stamps ADD COLUMN IF NOT EXISTS artist_name text;
+
+-- Optional backfill
+-- UPDATE public.drops SET artist_name = COALESCE(artist_name, artist_id) WHERE artist_id IS NOT NULL;
+-- UPDATE public.stamps SET artist_name = COALESCE(artist_name, artist_id) WHERE artist_id IS NOT NULL;
 `;
