@@ -21,7 +21,7 @@ const sanitizeData = (data: any, allowedKeys: string[]) => {
 // allowed keys for each table to prevent "column not found" errors
 const ALLOWED_KEYS = {
     drop: ['title', 'description', 'status', 'egg_price', 'bundle_price', 'max_supply', 'artist_id', 'banner_path', 'start_at', 'end_at'],
-    stamp: ['id', 'name', 'slug', 'rarity', 'status', 'collection', 'artist_id', 'art_path', 'price_eggs', 'edition_count', 'is_drop_only', 'design_config'],
+    stamp: ['id', 'external_id', 'name', 'slug', 'rarity', 'status', 'collection', 'artist_id', 'art_path', 'price_eggs', 'edition_count', 'is_drop_only', 'design_config'],
     broadcast: ['name', 'subject', 'channels', 'audience_segment', 'audience_size', 'scheduled_at', 'status', 'stats'],
     promo: ['name', 'code', 'type', 'status', 'description', 'value', 'start_at', 'end_at', 'usage_count'],
     member: ['email', 'full_name', 'role', 'tier', 'egg_balance', 'status', 'id', 'created_at', 'last_seen']
@@ -107,9 +107,15 @@ export const PidgeyCreations = () => {
                     // Ensure valid ID and fields
                     const rawPayload = {
                         ...formData,
-                        id: formData.id || `stp_${Date.now()}`,
+                        external_id: formData.id && String(formData.id).startsWith('stp_') ? formData.id : `stp_${Date.now()}`,
                         status: 'draft', // Force draft to ensure it goes to Inventory/Designation
                     };
+                    
+                    // If we mapped to external_id, remove id so DB generates it
+                    if (rawPayload.id && String(rawPayload.id).startsWith('stp_')) {
+                        delete rawPayload.id;
+                    }
+
                     const payload = sanitizeData(rawPayload, ALLOWED_KEYS.stamp);
                     result = await AdminService.stamps.create(payload);
                     break;

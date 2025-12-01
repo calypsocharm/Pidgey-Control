@@ -235,7 +235,8 @@ export interface Profile {
 }
 
 export interface Stamp {
-  id?: string; // Optional for drafting
+  id?: string | number; // Supports DB bigint
+  external_id?: string; // For string identifiers (stp_...)
   name: string;
   slug?: string;
   rarity: StampRarity;

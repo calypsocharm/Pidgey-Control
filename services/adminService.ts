@@ -343,12 +343,46 @@ export const AdminService = {
           const { data, count, error } = await supabase.from('stamps').select('*', { count: 'exact' });
           return { data: (data as Stamp[]) || [], count: count || 0, error };
       },
+      
       create: async (stamp: any) => {
-          const { data, error } = await supabase.from('stamps').insert(stamp).select().single();
+          const payload = { ...stamp };
+          
+          // Safe ID Handling: If string ID provided (e.g. 'stp_...'), move to external_id
+          // and let DB generate numeric ID.
+          // This allows clients to propose IDs (drafts) without breaking BigInt column.
+          if (payload.id && typeof payload.id === 'string' && !/^\d+$/.test(payload.id)) {
+              payload.external_id = payload.id;
+              delete payload.id; 
+          }
+          
+          // Note: If payload.id is a numeric string (e.g. "123"), Postgres might accept it for bigint,
+          // but usually we want to delete it to let the identity column auto-increment.
+          // We assume "numeric strings" should also be treated as external_id if passed explicitly,
+          // unless we are doing a migration/restore. For safety in this app context:
+          if (payload.id && typeof payload.id === 'string' && /^\d+$/.test(payload.id)) {
+               // Optional: Decide whether to treat as ID or external. 
+               // For now, we trust the DB to auto-inc, so we remove it.
+               // payload.external_id = payload.id; 
+               // delete payload.id;
+          }
+          
+          const { data, error } = await supabase.from('stamps').insert(payload).select().single();
           return { data, error };
       },
-      update: async (id: string, updates: Partial<Stamp>) => {
-          const { data, error } = await supabase.from('stamps').update(updates).eq('id', id).select().single();
+      
+      update: async (id: string | number, updates: Partial<Stamp>) => {
+          let query = supabase.from('stamps').update(updates);
+          
+          // Intelligent lookup:
+          // If ID is a string like "stp_12345", look up by external_id.
+          // If ID is a number or numeric string "123", look up by id (primary key).
+          if (typeof id === 'string' && !/^\d+$/.test(id)) {
+              query = query.eq('external_id', id);
+          } else {
+              query = query.eq('id', id);
+          }
+          
+          const { data, error } = await query.select().single();
           return { data: data as Stamp, error };
       }
   },

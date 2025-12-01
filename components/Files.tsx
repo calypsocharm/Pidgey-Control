@@ -263,14 +263,25 @@ export const Files = () => {
 
     const handleCreateStamp = async () => {
         if (!newStamp.name || !newStamp.art_path) return alert("Name and Art URL required");
+        
+        // Prepare payload with external_id instead of 'id' to allow DB generation
         const stampPayload = {
             ...newStamp,
-            id: `stp_${Date.now()}`,
+            external_id: `stp_${Date.now()}`,
             created_at: new Date().toISOString()
         } as Stamp;
-        console.log("Creating stamp:", stampPayload);
-        setIsStampModalOpen(false);
-        alert(`Stamp "${newStamp.name}" created! (Check Drops & Stamps page)`);
+        
+        console.log("Creating stamp with safe ID logic:", stampPayload);
+        
+        // Use the AdminService which handles the swap logic if needed
+        const { error } = await AdminService.stamps.create(stampPayload);
+        
+        if (error) {
+             alert(`Failed to create stamp: ${error.message}`);
+        } else {
+             setIsStampModalOpen(false);
+             alert(`Stamp "${newStamp.name}" created! (Check Drops & Stamps page)`);
+        }
     };
 
     const handlePidgeyFill = async () => {
