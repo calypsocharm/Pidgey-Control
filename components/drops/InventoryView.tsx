@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Box, Undo2, Image as ImageIcon, Trash2, CheckCircle2, AlertOctagon, Package, ArrowRight } from 'lucide-react';
+import { Box, Undo2, Image as ImageIcon, Trash2, CheckCircle2, AlertOctagon, Package, ArrowRight, Archive } from 'lucide-react';
 import { Stamp, StampStatus, StampRarity } from '../../types';
 
 interface InventoryViewProps {
@@ -16,6 +16,8 @@ const getStatusBadge = (status: StampStatus) => {
         case StampStatus.DRAFT: return <span className="text-[9px] bg-red-500/20 text-red-400 px-1.5 py-0.5 rounded uppercase font-bold border border-red-500/20 flex items-center gap-1"><AlertOctagon size={10}/> Action Needed</span>;
         case StampStatus.READY: return <span className="text-[9px] bg-green-500/20 text-green-400 px-1.5 py-0.5 rounded uppercase font-bold flex items-center gap-1 border border-green-500/20"><CheckCircle2 size={10}/> Ready for Drop</span>;
         case StampStatus.ACTIVE: return <span className="text-[9px] bg-purple-500/20 text-purple-400 px-1.5 py-0.5 rounded uppercase font-bold border border-purple-500/20">Live</span>;
+        case StampStatus.DROPPED: return <span className="text-[9px] bg-slate-500/20 text-slate-400 px-1.5 py-0.5 rounded uppercase font-bold border border-slate-500/20">Archived (Dropped)</span>;
+        case StampStatus.ARCHIVED: return <span className="text-[9px] bg-slate-500/20 text-slate-400 px-1.5 py-0.5 rounded uppercase font-bold border border-slate-500/20">Archived</span>;
         default: return null;
     }
 };
@@ -64,16 +66,19 @@ const getStampVisuals = (r: StampRarity) => {
 };
 
 export const InventoryView: React.FC<InventoryViewProps> = ({ stamps, loading, onSelectStamp, onDeleteStamp, onRefresh }) => {
-    const [activeTab, setActiveTab] = useState<'inbox' | 'vault'>('inbox');
+    const [activeTab, setActiveTab] = useState<'inbox' | 'vault' | 'archive'>('inbox');
     
+    // Categorize Stamps
     const draftStamps = stamps.filter(s => s.status === StampStatus.DRAFT);
     const readyStamps = stamps.filter(s => s.status === StampStatus.READY || s.status === StampStatus.ACTIVE);
+    const archivedStamps = stamps.filter(s => s.status === StampStatus.DROPPED || s.status === StampStatus.ARCHIVED);
     
-    const displayedStamps = activeTab === 'inbox' ? draftStamps : readyStamps;
+    // Determine displayed list
+    const displayedStamps = activeTab === 'inbox' ? draftStamps : activeTab === 'vault' ? readyStamps : archivedStamps;
 
     // Auto-switch tab if inbox is empty but vault has items
     useEffect(() => {
-        if (!loading && draftStamps.length === 0 && readyStamps.length > 0) {
+        if (!loading && activeTab === 'inbox' && draftStamps.length === 0 && readyStamps.length > 0) {
             setActiveTab('vault');
         }
     }, [loading, draftStamps.length, readyStamps.length]);
@@ -116,6 +121,16 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ stamps, loading, o
                     >
                         <Package size={14} /> Vault: Ready for Drops ({readyStamps.length})
                     </button>
+                    <button 
+                        onClick={() => setActiveTab('archive')}
+                        className={`flex-1 py-4 text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 transition border-b-2 ${
+                            activeTab === 'archive' 
+                            ? 'bg-pidgey-panel text-slate-400 border-slate-400' 
+                            : 'text-pidgey-muted border-transparent hover:text-white hover:bg-white/5'
+                        }`}
+                    >
+                        <Archive size={14} /> Past Dropped Stamps ({archivedStamps.length})
+                    </button>
                 </div>
                 
                 {/* Content Grid */}
@@ -133,11 +148,17 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ stamps, loading, o
                                     <p className="font-bold">All caught up!</p>
                                     <p className="text-xs mt-1">No pending drafts. Go to the <span className="text-green-400 cursor-pointer" onClick={() => setActiveTab('vault')}>Vault</span> to see your ready stamps.</p>
                                 </>
-                            ) : (
+                            ) : activeTab === 'vault' ? (
                                 <>
                                     <ImageIcon size={48} className="mx-auto mb-4 opacity-20"/>
                                     <p className="font-bold">Vault is Empty</p>
                                     <p className="text-xs mt-1">Approve some drafts in Pidgey Creations first.</p>
+                                </>
+                            ) : (
+                                <>
+                                    <Archive size={48} className="mx-auto mb-4 opacity-20"/>
+                                    <p className="font-bold">No Archived Stamps</p>
+                                    <p className="text-xs mt-1">Once a drop goes live, stamps will appear here.</p>
                                 </>
                             )}
                         </div>
@@ -145,14 +166,18 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ stamps, loading, o
                         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 animate-in fade-in duration-300">
                             {displayedStamps.map(stamp => {
                                 const visuals = getStampVisuals(stamp.rarity);
+                                const isArchived = stamp.status === StampStatus.DROPPED || stamp.status === StampStatus.ARCHIVED;
+                                
                                 return (
                                     <div 
                                         key={stamp.id} 
-                                        onClick={() => onSelectStamp(stamp)}
-                                        className={`bg-pidgey-dark border rounded-xl p-3 cursor-pointer hover:-translate-y-1 transition-all group relative shadow-sm ${
-                                            stamp.status === StampStatus.READY 
-                                            ? 'border-green-500/20 hover:border-green-500' 
-                                            : 'border-red-500/20 hover:border-red-500'
+                                        onClick={() => !isArchived && onSelectStamp(stamp)}
+                                        className={`bg-pidgey-dark border rounded-xl p-3 relative shadow-sm transition-all ${
+                                            isArchived 
+                                            ? 'border-slate-500/20 opacity-70 grayscale-[0.5] cursor-default' 
+                                            : stamp.status === StampStatus.READY 
+                                                ? 'border-green-500/20 hover:border-green-500 cursor-pointer hover:-translate-y-1 group' 
+                                                : 'border-red-500/20 hover:border-red-500 cursor-pointer hover:-translate-y-1 group'
                                         }`}
                                     >
                                         {/* STAMP VISUAL */}
@@ -172,16 +197,18 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ stamps, loading, o
                                                 )}
                                             </div>
                                             
-                                            {/* Hover Overlay */}
-                                            <div className={`absolute inset-0 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity backdrop-blur-sm z-10 ${
-                                                stamp.status === StampStatus.DRAFT ? 'bg-red-900/40' : 'bg-green-900/40'
-                                            }`}>
-                                                <span className={`text-pidgey-dark text-[10px] font-bold px-2 py-1 rounded shadow-lg uppercase flex items-center gap-1 ${
-                                                    stamp.status === StampStatus.DRAFT ? 'bg-red-400' : 'bg-green-400'
+                                            {/* Hover Overlay (Only for active items) */}
+                                            {!isArchived && (
+                                                <div className={`absolute inset-0 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity backdrop-blur-sm z-10 ${
+                                                    stamp.status === StampStatus.DRAFT ? 'bg-red-900/40' : 'bg-green-900/40'
                                                 }`}>
-                                                    {stamp.status === StampStatus.DRAFT ? 'Designate' : 'Edit'} <ArrowRight size={10} />
-                                                </span>
-                                            </div>
+                                                    <span className={`text-pidgey-dark text-[10px] font-bold px-2 py-1 rounded shadow-lg uppercase flex items-center gap-1 ${
+                                                        stamp.status === StampStatus.DRAFT ? 'bg-red-400' : 'bg-green-400'
+                                                    }`}>
+                                                        {stamp.status === StampStatus.DRAFT ? 'Designate' : 'Edit'} <ArrowRight size={10} />
+                                                    </span>
+                                                </div>
+                                            )}
 
                                             {/* Status Icon */}
                                             {stamp.status === StampStatus.READY && (
@@ -195,14 +222,16 @@ export const InventoryView: React.FC<InventoryViewProps> = ({ stamps, loading, o
                                                 </div>
                                             )}
 
-                                            {/* DELETE BUTTON */}
-                                            <button 
-                                                onClick={(e) => onDeleteStamp(e, stamp)}
-                                                className="absolute top-1 left-1 p-1.5 bg-red-500/80 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity z-20 hover:bg-red-600 shadow-md"
-                                                title="Delete Stamp"
-                                            >
-                                                <Trash2 size={12} />
-                                            </button>
+                                            {/* DELETE BUTTON (Hidden for archived) */}
+                                            {!isArchived && (
+                                                <button 
+                                                    onClick={(e) => onDeleteStamp(e, stamp)}
+                                                    className="absolute top-1 left-1 p-1.5 bg-red-500/80 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity z-20 hover:bg-red-600 shadow-md"
+                                                    title="Delete Stamp"
+                                                >
+                                                    <Trash2 size={12} />
+                                                </button>
+                                            )}
                                         </div>
                                         <div className="font-bold text-xs truncate text-white mb-1" title={stamp.name}>{stamp.name}</div>
                                         <div className="flex justify-between items-center mb-2">

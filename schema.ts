@@ -36,6 +36,9 @@ CREATE TABLE IF NOT EXISTS public.drops (
   -- Visual Assets
   banner_path text, -- Stores URL to 'assets' bucket
   
+  -- Linked Assets
+  stamps jsonb, -- Array of stamp objects or IDs
+  
   -- Schedule
   start_at timestamptz,
   end_at timestamptz,
@@ -46,6 +49,7 @@ CREATE TABLE IF NOT EXISTS public.drops (
 ALTER TABLE public.drops ADD COLUMN IF NOT EXISTS artist_name text;
 ALTER TABLE public.drops ADD COLUMN IF NOT EXISTS artist_id text;
 ALTER TABLE public.drops ADD COLUMN IF NOT EXISTS banner_path text;
+ALTER TABLE public.drops ADD COLUMN IF NOT EXISTS stamps jsonb;
 
 -------------------------------------------------------------------------------
 -- 3. STAMPS (The Assets)

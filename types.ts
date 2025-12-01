@@ -46,8 +46,9 @@ export enum StampRarity {
 export enum StampStatus {
   DRAFT = 'draft',      // Newly created in Playground, missing metadata
   READY = 'ready',      // Metadata complete, ready to be added to a drop
-  ACTIVE = 'active',    // Live in a drop or store
-  ARCHIVED = 'archived',
+  ACTIVE = 'active',    // Live in a drop or store (Legacy, mostly unused now in favor of DROPPED)
+  DROPPED = 'dropped',  // Has been included in a LIVE campaign (Archived from Vault)
+  ARCHIVED = 'archived', // Manually archived
   TEST = 'test',
 }
 

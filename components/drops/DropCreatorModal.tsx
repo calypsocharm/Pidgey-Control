@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Save, Sparkles, X, History, Undo2, Library, ArrowRight, Box, CheckCircle2 } from 'lucide-react';
+import { Save, Sparkles, X, History, Undo2, Library, ArrowRight, Box, CheckCircle2, Globe, FileText } from 'lucide-react';
 import { Drop, DropStatus, Stamp, StampRarity } from '../../types';
 
 interface DropCreatorModalProps {
@@ -11,7 +11,7 @@ interface DropCreatorModalProps {
     dropStamps: Partial<Stamp>[];
     onToggleStamp: (stamp: Stamp) => void;
     readyStamps: Stamp[];
-    onSave: () => void;
+    onSave: (status?: DropStatus) => void;
     onPidgeyFill: () => void;
     isFilling: boolean;
     onRevert?: () => void;
@@ -64,8 +64,20 @@ export const DropCreatorModal: React.FC<DropCreatorModalProps> = ({
                     </div>
                     <div className="flex items-center gap-3">
                         <button onClick={onClose} className="text-pidgey-muted hover:text-white px-3">Cancel</button>
-                        <button onClick={onSave} className="px-4 py-2 bg-pidgey-accent text-pidgey-dark font-bold rounded-lg flex items-center gap-2 hover:bg-teal-300">
-                            <Save size={16} /> Save Campaign
+                        <div className="h-6 w-px bg-pidgey-border mx-1"></div>
+                        
+                        <button 
+                            onClick={() => onSave(DropStatus.DRAFT)}
+                            className="px-4 py-2 border border-pidgey-border hover:border-pidgey-accent hover:text-white text-pidgey-muted font-bold rounded-lg flex items-center gap-2 transition"
+                        >
+                            <FileText size={16} /> Save Draft
+                        </button>
+
+                        <button 
+                            onClick={() => onSave(DropStatus.LIVE)}
+                            className="px-4 py-2 bg-pidgey-accent text-pidgey-dark font-bold rounded-lg flex items-center gap-2 hover:bg-teal-300 shadow-lg shadow-teal-500/20"
+                        >
+                            <Globe size={16} /> Publish Drop
                         </button>
                     </div>
                 </div>
@@ -132,15 +144,9 @@ export const DropCreatorModal: React.FC<DropCreatorModalProps> = ({
                             </div>
                             <div>
                                 <label className="block text-xs font-bold text-pidgey-muted uppercase mb-1">Status</label>
-                                <select 
-                                    className="w-full bg-pidgey-dark border border-pidgey-border rounded-lg p-2.5 text-white"
-                                    value={drop.status || 'draft'}
-                                    onChange={e => onUpdate({ status: e.target.value as DropStatus })}
-                                >
-                                    <option value="draft">Draft</option>
-                                    <option value="live">Live</option>
-                                    <option value="ended">Ended</option>
-                                </select>
+                                <div className="p-2.5 bg-pidgey-dark border border-pidgey-border rounded-lg text-white text-sm font-mono opacity-80">
+                                    {drop.status || 'DRAFT'}
+                                </div>
                             </div>
 
                             {/* Archive Log / Revert */}

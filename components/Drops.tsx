@@ -70,14 +70,14 @@ export const Drops = () => {
                 // In Inventory View, we show everything so admins can manage the full lifecycle
                 setAllStamps(data);
                 
-                // For Drop Selector: Only READY
+                // For Drop Selector: Only READY/ACTIVE (Exclude DROPPED/ARCHIVED)
                 setReadyStamps(data.filter(s => s.status === StampStatus.READY || s.status === StampStatus.ACTIVE));
             }
         }
         setLoading(false);
     };
 
-    // Load Ready stamps for Drop Creator
+    // Load Ready stamps for Drop Creator (ensure exclusion of dropped items)
     const loadReadyStamps = async () => {
          const { data, error } = await AdminService.stamps.list();
          if (!error) {
@@ -106,18 +106,21 @@ export const Drops = () => {
 
     const handleEditDrop = (drop: Drop) => {
         setCurrentDrop({ ...drop });
-        // In real app, we would fetch the stamps linked to this drop here.
-        // For now, mocking selection of some ready stamps
+        // Restore selected stamps if they exist in the drop object
         setDropStamps(drop.stamps || []);
         loadReadyStamps();
         setIsModalOpen(true);
     };
 
-    const handleSaveDrop = async () => {
+    const handleSaveDrop = async (targetStatus?: DropStatus) => {
         if (!currentDrop.title || !currentDrop.egg_price) return alert("Title and Price required");
         
+        // Use provided status (Publish/Draft) or fallback to current state
+        const statusToUse = targetStatus || currentDrop.status || DropStatus.DRAFT;
+
         const payload = { 
             ...currentDrop,
+            status: statusToUse,
             stamps: dropStamps 
         };
         
@@ -132,6 +135,23 @@ export const Drops = () => {
             alert("Error saving drop: " + res.error.message);
         } else {
             setIsModalOpen(false);
+            
+            // AUTOMATED ARCHIVAL: If publishing LIVE, move stamps to 'DROPPED'
+            if (statusToUse === DropStatus.LIVE && dropStamps.length > 0) {
+                // Collect IDs of stamps involved
+                const stampIds = dropStamps.map(s => s.id).filter((id): id is string | number => id !== undefined);
+                
+                // Call service to batch update
+                await AdminService.stamps.markAsDropped(stampIds);
+                
+                // Sync cache
+                await AdminService.drops.sync();
+                
+                alert(`✅ Drop Published! \n\n${stampIds.length} stamps have been moved to "Past Dropped" status in Inventory.`);
+            } else {
+                alert("Draft Saved.");
+            }
+            
             fetchData();
         }
     };
@@ -147,6 +167,7 @@ export const Drops = () => {
         if (error) {
             alert("Failed to revert: " + error.message);
         } else {
+             await AdminService.drops.sync(); // Force update to remove from live
              alert("Drop reverted to Draft.");
              fetchData();
         }

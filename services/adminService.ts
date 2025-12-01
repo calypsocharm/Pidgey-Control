@@ -1,6 +1,6 @@
 
 import { supabase } from './supabaseClient';
-import { Profile, Drop, Ticket, DropStatus, Broadcast, Promo, Asset, AssetType, DeliveryJourney, DeliveryStatus, BroadcastChannel, Transaction, Role, Tier, Stamp } from '../types';
+import { Profile, Drop, Ticket, DropStatus, Broadcast, Promo, Asset, AssetType, DeliveryJourney, DeliveryStatus, BroadcastChannel, Transaction, Role, Tier, Stamp, StampStatus } from '../types';
 import { MOCK_BROADCASTS, MOCK_PROMOS, MOCK_ASSETS, MOCK_DELIVERIES, MOCK_FLIGHT_PATHS, MOCK_PROFILES } from '../constants';
 
 // Set to empty string to allow Vite proxy (setup in vite.config.js) to handle the routing
@@ -394,7 +394,8 @@ export const AdminService = {
         ...rest,
         artist_name: payload.artist_name ?? payload.artist_id ?? null,
         artist_id: payload.artist_id,
-        banner_path: cleanStorageUrl(payload.banner_path, 'assets')
+        banner_path: cleanStorageUrl(payload.banner_path, 'assets'),
+        stamps: payload.stamps // Ensure stamps selection is persisted
       };
 
       // Check artist_id validity
@@ -439,6 +440,16 @@ export const AdminService = {
 
       console.log(`[AUDIT] Drop ${id} updated`, cleanUpdates);
       return { data: data as Drop, error };
+    },
+
+    // Explicit Sync Method to bust caches
+    sync: async () => {
+        console.log("[System] Triggering Drop Cache Invalidation...");
+        // In a real app, this would hit an edge function or Redis clear endpoint.
+        // e.g. await fetch(`${BACKEND_API}/hooks/revalidate-drops`, { method: 'POST' });
+        await new Promise(r => setTimeout(r, 800)); // Simulate network op
+        console.log("[System] Drops Synced to Live.");
+        return true;
     },
 
     archive: async (id: string) => {
@@ -545,6 +556,23 @@ export const AdminService = {
           }
 
           return { data: data as Stamp, error };
+      },
+
+      // Batch mark stamps as DROPPED when a campaign goes live
+      markAsDropped: async (ids: (string | number)[]) => {
+          if (!ids || ids.length === 0) return { error: null };
+          
+          console.log(`[Inventory] Archiving stamps to 'DROPPED' status:`, ids);
+          
+          const { error } = await supabase
+              .from('stamps')
+              .update({ status: StampStatus.DROPPED })
+              .in('id', ids); // Assumes IDs are numeric bigints, works for strings too if UUIDs
+              
+          if (error) {
+              console.error("Failed to archive stamps:", error);
+          }
+          return { error };
       },
 
       delete: async (id: string | number) => {
