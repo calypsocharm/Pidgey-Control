@@ -384,6 +384,19 @@ export const AdminService = {
           
           const { data, error } = await query.select().single();
           return { data: data as Stamp, error };
+      },
+
+      delete: async (id: string | number) => {
+          let query = supabase.from('stamps').delete();
+          
+          if (typeof id === 'string' && !/^\d+$/.test(id)) {
+              query = query.eq('external_id', id);
+          } else {
+              query = query.eq('id', id);
+          }
+          
+          const { error } = await query;
+          return { error };
       }
   },
 

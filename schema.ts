@@ -10,7 +10,8 @@ CREATE TABLE public.profiles (
     egg_balance jsonb DEFAULT '{"mystery": 0, "premium": 0, "standard": 3}'::jsonb,
     status text DEFAULT 'active'::text,
     created_at timestamptz DEFAULT now(),
-    last_seen timestamptz DEFAULT now()
+    last_seen timestamptz DEFAULT now(),
+    CONSTRAINT profiles_status_check CHECK (status IN ('active', 'inactive', 'banned', 'pending', 'suspended'))
 );
 
 -- 2) TABLE: cards
@@ -115,4 +116,17 @@ CREATE TABLE public.promos (
   usage_count int default 0,
   created_at timestamptz DEFAULT now()
 );
+
+------------------------------------------------------------------
+-- MIGRATION UTILITIES (Run these in Supabase SQL Editor if needed)
+------------------------------------------------------------------
+
+-- 1) Add Status Column Safely (if missing)
+-- ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS status text;
+-- UPDATE public.profiles SET status = 'active' WHERE status IS NULL;
+-- ALTER TABLE public.profiles ALTER COLUMN status SET DEFAULT 'active';
+
+-- 2) Add/Update Check Constraint
+-- ALTER TABLE public.profiles DROP CONSTRAINT IF EXISTS profiles_status_check;
+-- ALTER TABLE public.profiles ADD CONSTRAINT profiles_status_check CHECK (status IN ('active', 'inactive', 'banned', 'pending', 'suspended'));
 `;

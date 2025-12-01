@@ -198,6 +198,23 @@ export const Drops = () => {
         setIsDesignationOpen(true);
     };
 
+    const handleDeleteStamp = async (e: React.MouseEvent, stamp: Stamp) => {
+        e.stopPropagation(); // Prevent opening modal
+        if (!confirm(`Are you sure you want to delete "${stamp.name}"? This cannot be undone.`)) return;
+        
+        if (!stamp.id) return;
+
+        // Call service
+        const { error } = await AdminService.stamps.delete(stamp.id);
+        if (error) {
+            alert("Failed to delete: " + error.message);
+        } else {
+            // Update local state
+            setInventoryStamps(prev => prev.filter(s => s.id !== stamp.id));
+            setReadyStamps(prev => prev.filter(s => s.id !== stamp.id)); // If it was ready
+        }
+    };
+
     const handleAutoName = async () => {
         if (!designatingStamp) return;
         const name = await generateStampName({
@@ -367,7 +384,7 @@ export const Drops = () => {
                                         <div className="flex items-center gap-4 text-xs text-pidgey-muted pt-4 border-t border-pidgey-border">
                                             <div className="flex items-center gap-1">
                                                 <Calendar size={12} />
-                                                <span>Start: {new Date(drop.start_at).toLocaleDateString()}</span>
+                                                <span>Start: {new Date(drop.start_at).toLocaleDateString()}`</span>
                                             </div>
                                             {drop.max_supply && (
                                                 <div className="flex items-center gap-1">
@@ -435,7 +452,7 @@ export const Drops = () => {
                                     <div 
                                         key={stamp.id} 
                                         onClick={() => openDesignation(stamp)}
-                                        className={`bg-pidgey-dark border rounded-xl p-3 cursor-pointer hover:-translate-y-1 transition-all group ${
+                                        className={`bg-pidgey-dark border rounded-xl p-3 cursor-pointer hover:-translate-y-1 transition-all group relative ${
                                             stamp.status === StampStatus.READY 
                                             ? 'border-green-500/30 hover:border-green-500' 
                                             : 'border-pidgey-border hover:border-pidgey-accent'
@@ -451,6 +468,14 @@ export const Drops = () => {
                                                     <CheckCircle2 size={10} />
                                                 </div>
                                             )}
+                                            {/* DELETE BUTTON */}
+                                            <button 
+                                                onClick={(e) => handleDeleteStamp(e, stamp)}
+                                                className="absolute top-1 left-1 p-1.5 bg-red-500/80 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity z-20 hover:bg-red-600 shadow-md"
+                                                title="Delete Stamp"
+                                            >
+                                                <Trash2 size={12} />
+                                            </button>
                                         </div>
                                         <div className="font-bold text-xs truncate text-white" title={stamp.name}>{stamp.name}</div>
                                         <div className="flex justify-between items-center mt-1">
