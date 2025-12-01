@@ -1,8 +1,9 @@
+
 import React, { useState, useEffect, useRef } from 'react';
-import { FolderOpen, Image as ImageIcon, Grid, List, Search, Upload, Loader, Plus, X, Save, Tag, RefreshCw, Database, Terminal, Sparkles } from 'lucide-react';
+import { FolderOpen, Image as ImageIcon, Grid, List, Search, Upload, Loader, Plus, X, Save, Tag, RefreshCw, Database, Terminal, Sparkles, Activity } from 'lucide-react';
 import { AdminService } from '../services/adminService';
 import { generateTagsForAsset, generateFormContent } from '../services/geminiService';
-import { migrateAssets } from '../services/assetMigration';
+import { migrateAssets, runConnectionTest } from '../services/assetMigration';
 import { Asset, AssetType, Stamp, StampRarity, StampStatus } from '../types';
 import { useSafeMode } from '../SafeModeContext';
 import { FileCard } from './files/FileCard';
@@ -10,10 +11,8 @@ import { FileCard } from './files/FileCard';
 const BUCKETS = [
     { id: 'stamps', label: 'Stamps' },
     { id: 'templates', label: 'Templates' },
-    { id: 'admin_files', label: 'Admin Files' },
-    { id: 'cards', label: 'Cards' },
-    { id: 'avatars', label: 'User Avatars' },
-    { id: 'attachments', label: 'Attachments' },
+    { id: 'assets', label: 'Assets' },
+    { id: 'public_stamps', label: 'Public Stamps' },
 ];
 
 export const Files = () => {
@@ -67,18 +66,15 @@ export const Files = () => {
 
     const handleSync = async () => {
         setIsSyncing(true);
-        const { data, error } = await AdminService.files.list(selectedBucket);
-        if (error) {
-             alert(`Sync failed: ${error.message || 'Check console details'}`);
-        } else {
-             setFiles(data);
-             if (data.length > 0) {
-                 alert(`Sync complete! Found ${data.length} files in ${selectedBucket}.`);
-             } else {
-                 alert(`Sync complete but found 0 files. Check if bucket '${selectedBucket}' is empty or files are hidden.`);
-             }
-        }
+        await fetchData();
         setIsSyncing(false);
+    };
+
+    const handleTestConnection = async () => {
+        setIsMigrating(true);
+        setMigrationLogs(['Initializing connectivity test...']);
+        await runConnectionTest((msg) => setMigrationLogs(prev => [...prev, msg]));
+        // Note: We don't auto-close the log window so user can see result
     };
 
     const handleRunMigration = async () => {
@@ -234,6 +230,15 @@ export const Files = () => {
                 </div>
                 <div className="flex gap-2">
                      <button 
+                         onClick={handleTestConnection}
+                         disabled={isMigrating}
+                         className="flex items-center gap-2 px-3 py-2 bg-pidgey-dark border border-pidgey-border hover:bg-pidgey-panel text-pidgey-muted hover:text-white font-bold rounded-lg transition text-xs disabled:opacity-50"
+                         title="Verify connectivity"
+                     >
+                         <Activity size={14} /> Test
+                     </button>
+
+                     <button 
                          onClick={handleRunMigration}
                          disabled={isMigrating}
                          className="flex items-center gap-2 px-4 py-2 bg-pidgey-secondary/10 border border-pidgey-secondary/30 text-pidgey-secondary hover:bg-pidgey-secondary hover:text-white font-bold rounded-lg transition text-sm disabled:opacity-50"
@@ -306,7 +311,7 @@ export const Files = () => {
                     </div>
                     <div className="h-48 overflow-y-auto space-y-1 scrollbar-thin scrollbar-thumb-gray-700">
                         {migrationLogs.map((log, idx) => (
-                            <div key={idx} className={`${log.includes('❌') ? 'text-red-400' : log.includes('✅') ? 'text-green-400' : 'text-gray-300'}`}>
+                            <div key={idx} className={`${log.includes('❌') || log.includes('FAIL') ? 'text-red-400' : log.includes('✅') || log.includes('OK') ? 'text-green-400' : 'text-gray-300'}`}>
                                 <span className="text-gray-600 mr-2">[{new Date().toLocaleTimeString()}]</span>
                                 {log}
                             </div>
