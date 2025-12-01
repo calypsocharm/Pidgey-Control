@@ -7,6 +7,7 @@ import { migrateAssets, runConnectionTest } from '../services/assetMigration';
 import { Asset, AssetType, Stamp, StampRarity, StampStatus } from '../types';
 import { useSafeMode } from '../SafeModeContext';
 import { FileCard } from './files/FileCard';
+import { useNavigate } from 'react-router-dom';
 
 const BUCKETS = [
     { id: 'stamps', label: 'Stamps' },
@@ -41,6 +42,7 @@ export const Files = () => {
     });
     
     const { isSafeMode } = useSafeMode();
+    const navigate = useNavigate();
     const fileInputRef = useRef<HTMLInputElement>(null);
     const stampFileInputRef = useRef<HTMLInputElement>(null);
 
@@ -165,6 +167,10 @@ export const Files = () => {
         } else {
             setFiles(prev => prev.filter(f => f.id !== file.id));
         }
+    };
+
+    const handleEditInPlayground = (file: Asset) => {
+        navigate('/playground', { state: { loadFile: file } });
     };
 
     // --- Stamp Creation Handlers ---
@@ -366,6 +372,7 @@ export const Files = () => {
                             onDelete={handleDelete}
                             isSafeMode={isSafeMode}
                             onSelect={selectedBucket === 'stamps' ? () => openStampCreator(file) : undefined}
+                            onDesign={selectedBucket === 'stamps' ? () => handleEditInPlayground(file) : undefined}
                             isStamp={selectedBucket === 'stamps' || file.type === AssetType.STAMP_ART}
                         />
                     ))}

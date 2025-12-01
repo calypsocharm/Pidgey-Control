@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { FileText, Download, Trash2, Sparkles, Plus, AlertTriangle } from 'lucide-react';
+import { FileText, Download, Trash2, Sparkles, Plus, AlertTriangle, Palette } from 'lucide-react';
 import { Asset, AssetType } from '../../types';
 
 interface FileCardProps {
@@ -10,10 +10,11 @@ interface FileCardProps {
     onDelete: (file: Asset) => void;
     isSafeMode: boolean;
     onSelect?: (file: Asset) => void;
+    onDesign?: (file: Asset) => void;
     isStamp?: boolean;
 }
 
-export const FileCard: React.FC<FileCardProps> = ({ file, onAutoTag, isTagging, onDelete, isSafeMode, onSelect, isStamp }) => {
+export const FileCard: React.FC<FileCardProps> = ({ file, onAutoTag, isTagging, onDelete, isSafeMode, onSelect, onDesign, isStamp }) => {
     const [imgError, setImgError] = useState(false);
 
     // Apply stamp style if isStamp is true
@@ -66,6 +67,17 @@ export const FileCard: React.FC<FileCardProps> = ({ file, onAutoTag, isTagging, 
                             title="Create Database Entry from this File"
                         >
                             <Plus size={18} strokeWidth={3} />
+                        </button>
+                    )}
+
+                    {/* Design in Studio Shortcut */}
+                    {onDesign && !imgError && (
+                        <button 
+                            onClick={() => onDesign(file)}
+                            className="p-2 bg-purple-500 text-white rounded-full font-bold hover:bg-purple-600 transition-colors shadow-lg"
+                            title="Design in Playground"
+                        >
+                            <Palette size={18} />
                         </button>
                     )}
 

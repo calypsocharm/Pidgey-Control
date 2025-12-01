@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Image as ImageIcon, Sparkles, Upload, Save, Loader, RefreshCw, Palette, LayoutTemplate, Plus, Type, Film, X, Square, Copy, Download, Zap, Wand2, Layers, Snowflake, CloudRain, MonitorPlay, Move, ZoomIn, Scaling, FolderOpen, ChevronRight, Bird, Send as SendIcon } from 'lucide-react';
+import { Image as ImageIcon, Sparkles, Upload, Save, Loader, RefreshCw, Palette, LayoutTemplate, Plus, Type, Film, X, Square, Copy, Download, Zap, Wand2, Layers, Snowflake, CloudRain, MonitorPlay, Move, ZoomIn, Scaling, FolderOpen, ChevronRight, Bird, Send as SendIcon, Database, HardDrive } from 'lucide-react';
 import { AdminService } from '../services/adminService';
 import { generateImageAsset, generateStampName } from '../services/geminiService';
 import { Stamp, Asset, StampRarity, StampStatus, BorderConfig, TextConfig, EffectConfig, ArtConfig } from '../types';
@@ -32,6 +32,11 @@ export const Playground = () => {
     const [stamps, setStamps] = useState<Stamp[]>([]);
     const [templates, setTemplates] = useState<Asset[]>([]);
     
+    // File Storage State (for Load Asset Modal)
+    const [storageFiles, setStorageFiles] = useState<Asset[]>([]);
+    const [loadTab, setLoadTab] = useState<'database' | 'storage'>('database');
+    const [loadingFiles, setLoadingFiles] = useState(false);
+
     // Selection State
     const [selectedStamp, setSelectedStamp] = useState<Stamp | null>(null);
     const [selectedTemplate, setSelectedTemplate] = useState<Asset | null>(null);
@@ -49,7 +54,7 @@ export const Playground = () => {
     const [showTextOverlay, setShowTextOverlay] = useState(true);
     
     const [textConfig, setTextConfig] = useState<TextConfig>({
-        text: "Pidgey Post",
+        text: "",
         font: 'font-handwriting',
         size: 24,
         color: '#ffffff',
@@ -98,14 +103,24 @@ export const Playground = () => {
         loadData();
     }, [mode]);
 
-    // Handle seamless navigation from Drops Inventory
+    // Handle seamless navigation from Drops Inventory OR Files
     useEffect(() => {
         if (location.state?.loadStamp) {
             handleSelectStamp(location.state.loadStamp);
             // Clear state to avoid reload loops if needed, though React Router handles this well
             window.history.replaceState({}, '');
+        } else if (location.state?.loadFile) {
+            handleSelectRawFile(location.state.loadFile);
+            window.history.replaceState({}, '');
         }
     }, [location.state]);
+
+    // Fetch storage files when switching to that tab
+    useEffect(() => {
+        if (isLoadModalOpen && loadTab === 'storage' && storageFiles.length === 0) {
+            loadStorageFiles();
+        }
+    }, [isLoadModalOpen, loadTab]);
 
     const loadData = async () => {
         setLoading(true);
@@ -118,6 +133,13 @@ export const Playground = () => {
             setTemplates(data);
         }
         setLoading(false);
+    };
+
+    const loadStorageFiles = async () => {
+        setLoadingFiles(true);
+        const { data } = await AdminService.files.list('stamps');
+        setStorageFiles(data);
+        setLoadingFiles(false);
     };
 
     // --- Selection Handlers ---
@@ -157,6 +179,26 @@ export const Playground = () => {
             restoreDesignConfig(stamp.design_config);
         }
         
+        setActiveTab('art');
+    };
+
+    const handleSelectRawFile = (file: Asset) => {
+        resetEditor();
+        // Create a "New Stamp" shell around this file
+        setSelectedStamp({
+            id: 'new',
+            name: file.name.split('.')[0].replace(/[_-]/g, ' '),
+            rarity: StampRarity.COMMON,
+            status: StampStatus.DRAFT,
+            price_eggs: 0,
+            is_drop_only: false,
+            art_path: file.url,
+            collection: 'Playground'
+        });
+        setSelectedTemplate(null);
+        setPreviewUrl(file.url);
+        setAssetName(file.name.split('.')[0].replace(/[_-]/g, ' '));
+        setPrompt("A new stamp design...");
         setActiveTab('art');
     };
 
@@ -896,24 +938,77 @@ export const Playground = () => {
                             <button onClick={() => setIsLoadModalOpen(false)} className="text-pidgey-muted hover:text-white"><X size={20}/></button>
                         </div>
                         
-                        <div className="flex-1 overflow-y-auto grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4 pr-2">
-                            {stamps.map(stamp => (
-                                <div 
-                                    key={stamp.id} 
-                                    onClick={() => {
-                                        handleSelectStamp(stamp);
-                                        setIsLoadModalOpen(false);
-                                    }}
-                                    className="bg-pidgey-dark border border-pidgey-border rounded-xl p-3 cursor-pointer hover:border-pidgey-accent hover:-translate-y-1 transition-all group"
-                                >
-                                    <div className="aspect-[3/4] bg-pidgey-panel rounded-lg mb-2 flex items-center justify-center overflow-hidden relative">
-                                        {stamp.art_path ? <img src={stamp.art_path} className="w-full h-full object-contain p-2" /> : <ImageIcon size={24} className="opacity-20"/>}
-                                    </div>
-                                    <div className="font-bold text-xs truncate text-white">{stamp.name}</div>
-                                    <div className="text-[10px] text-pidgey-muted uppercase mt-1">{stamp.status}</div>
-                                </div>
-                            ))}
+                        {/* Tab Switcher */}
+                        <div className="flex gap-4 mb-4">
+                            <button 
+                                onClick={() => setLoadTab('database')}
+                                className={`px-4 py-2 rounded-lg text-xs font-bold uppercase transition flex items-center gap-2 ${loadTab === 'database' ? 'bg-pidgey-accent text-pidgey-dark' : 'bg-pidgey-dark text-pidgey-muted border border-pidgey-border'}`}
+                            >
+                                <Database size={14} /> Database Stamps
+                            </button>
+                            <button 
+                                onClick={() => setLoadTab('storage')}
+                                className={`px-4 py-2 rounded-lg text-xs font-bold uppercase transition flex items-center gap-2 ${loadTab === 'storage' ? 'bg-pidgey-accent text-pidgey-dark' : 'bg-pidgey-dark text-pidgey-muted border border-pidgey-border'}`}
+                            >
+                                <HardDrive size={14} /> File Storage
+                            </button>
                         </div>
+
+                        {loadTab === 'database' ? (
+                            <div className="flex-1 overflow-y-auto grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4 pr-2">
+                                {stamps.map(stamp => (
+                                    <div 
+                                        key={stamp.id} 
+                                        onClick={() => {
+                                            handleSelectStamp(stamp);
+                                            setIsLoadModalOpen(false);
+                                        }}
+                                        className="bg-pidgey-dark border border-pidgey-border rounded-xl p-3 cursor-pointer hover:border-pidgey-accent hover:-translate-y-1 transition-all group"
+                                    >
+                                        <div className="aspect-[3/4] bg-pidgey-panel rounded-lg mb-2 flex items-center justify-center overflow-hidden relative">
+                                            {stamp.art_path ? <img src={stamp.art_path} className="w-full h-full object-contain p-2" /> : <ImageIcon size={24} className="opacity-20"/>}
+                                        </div>
+                                        <div className="font-bold text-xs truncate text-white">{stamp.name}</div>
+                                        <div className="text-[10px] text-pidgey-muted uppercase mt-1">{stamp.status}</div>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="flex-1 overflow-y-auto">
+                                {loadingFiles ? (
+                                    <div className="flex items-center justify-center h-full text-pidgey-muted gap-2">
+                                        <Loader className="animate-spin" size={20} /> Loading storage...
+                                    </div>
+                                ) : storageFiles.length === 0 ? (
+                                    <div className="flex flex-col items-center justify-center h-full text-pidgey-muted">
+                                        <HardDrive size={40} className="mb-2 opacity-20" />
+                                        <p className="text-sm">No files found in 'stamps' bucket.</p>
+                                    </div>
+                                ) : (
+                                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4 pr-2">
+                                        {storageFiles.map(file => (
+                                            <div 
+                                                key={file.id} 
+                                                onClick={() => {
+                                                    handleSelectRawFile(file);
+                                                    setIsLoadModalOpen(false);
+                                                }}
+                                                className="bg-pidgey-dark border border-pidgey-border rounded-xl p-3 cursor-pointer hover:border-pidgey-accent hover:-translate-y-1 transition-all group"
+                                            >
+                                                <div className="aspect-[3/4] bg-pidgey-panel rounded-lg mb-2 flex items-center justify-center overflow-hidden relative">
+                                                    <img src={file.url} className="w-full h-full object-contain p-2" />
+                                                </div>
+                                                <div className="font-bold text-xs truncate text-white">{file.name}</div>
+                                                <div className="text-[10px] text-pidgey-muted uppercase mt-1 flex justify-between">
+                                                    <span>RAW FILE</span>
+                                                    <span>{(file.size_kb/1024).toFixed(1)} MB</span>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        )}
                     </div>
                 </div>
             )}

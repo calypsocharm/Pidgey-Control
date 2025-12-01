@@ -271,19 +271,20 @@ export const Drops = () => {
 
         console.log("Saving stamp update:", id, payload);
 
-        const { error } = await AdminService.stamps.update(designatingStamp.id, payload);
+        // Call service (It will return the object with the RESOLVED URL, not the raw path)
+        const { data: updatedStamp, error } = await AdminService.stamps.update(designatingStamp.id, payload);
         
         setIsSavingDesignation(false);
 
         if (error) {
             alert("Failed to finalize: " + error.message);
         } else {
-            // Update local state
-            setAllStamps(prev => prev.map(s => s.id === designatingStamp.id ? { ...s, ...payload } : s));
+            // Update local state with the FULL updated stamp (including resolved URL)
+            setAllStamps(prev => prev.map(s => s.id === designatingStamp.id ? updatedStamp : s));
             setIsDesignationOpen(false);
             
             // Explicit Success Feedback
-            alert(`✅ Stamp "${designatingStamp.name}" is now READY!\n\nIt can now be selected when building a Drop Campaign.`);
+            alert(`✅ Stamp "${updatedStamp.name}" is now READY!\n\nIt can now be selected when building a Drop Campaign.`);
         }
     };
 

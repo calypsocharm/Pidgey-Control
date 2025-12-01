@@ -22,6 +22,63 @@ const safeUUID = () => {
   });
 };
 
+// --- URL & PATH HELPERS ---
+
+/**
+ * Clean a URL back to its storage path for saving to DB.
+ * e.g. "https://.../stamps/folder/img.png?token..." -> "folder/img.png"
+ */
+const cleanStorageUrl = (url: string | undefined, bucket: string): string => {
+    if (!url) return '';
+    if (!url.startsWith('http')) return url; // Already a path
+    
+    // Attempt to extract relative path from Supabase URL structure
+    // Matches: /object/public/BUCKET/PATH or /object/sign/BUCKET/PATH
+    const regex = new RegExp(`\\/object\\/(public|sign)\\/${bucket}\\/(.*?)(\\?|$)`);
+    const match = url.match(regex);
+    
+    if (match && match[2]) {
+        return decodeURIComponent(match[2]);
+    }
+    
+    // If we can't extract, return original (it might be an external URL like picsum)
+    return url;
+};
+
+/**
+ * Resolves a storage path (e.g., 'public_stamps/file.png') to a valid Signed URL.
+ * If it's already a URL, returns it as is.
+ */
+const resolveStorageUrl = async (path: string | undefined, bucket: string): Promise<string> => {
+    if (!path) return '';
+    
+    // Auto-Repair: If it's a Supabase URL (likely expired), strip it to path and re-sign
+    if (path.startsWith('http') && path.includes('/object/')) {
+         const relativePath = cleanStorageUrl(path, bucket);
+         // If cleanStorageUrl managed to extract a path different from the full URL
+         if (relativePath !== path) {
+             // It was a Supabase URL, so we have the relative path now. Sign it fresh.
+             try {
+                const { data } = await supabase.storage.from(bucket).createSignedUrl(relativePath, 3600);
+                return data?.signedUrl || path;
+             } catch (e) {
+                 return path;
+             }
+         }
+    }
+
+    if (path.startsWith('http')) return path; // External URL or valid permanent URL
+    
+    try {
+        const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, 3600); // 1 hour expiry
+        return data?.signedUrl || path;
+    } catch (e) {
+        console.warn("Failed to sign URL for", path);
+        return path;
+    }
+};
+
+
 /**
  * Generic response type for list operations
  */
@@ -309,8 +366,17 @@ export const AdminService = {
         .from('drops')
         .select('*', { count: 'exact' })
         .order('start_at', { ascending: false });
-        
-      return { data: (data as Drop[]) || [], count: count || 0, error };
+      
+      // Auto-resolve banner URLs
+      if (data) {
+          const resolvedData = await Promise.all(data.map(async (d: Drop) => ({
+              ...d,
+              banner_path: await resolveStorageUrl(d.banner_path, 'assets')
+          })));
+          return { data: resolvedData, count: count || 0, error };
+      }
+
+      return { data: [], count: 0, error };
     },
 
     create: async (payload: Partial<Drop>) => {
@@ -318,10 +384,12 @@ export const AdminService = {
       const { id, artist_id, ...rest } = payload;
 
       // 2. Logic: Prefer artist_name, fallback to artist_id if it looks like a name
+      // Also Clean the banner_path to store relative path in DB
       let insertPayload: any = {
         ...rest,
         artist_name: payload.artist_name ?? payload.artist_id ?? null,
-        artist_id: payload.artist_id
+        artist_id: payload.artist_id,
+        banner_path: cleanStorageUrl(payload.banner_path, 'assets')
       };
 
       let { data, error } = await supabase.from('drops').insert(insertPayload).select().single();
@@ -336,13 +404,30 @@ export const AdminService = {
           error = retry.error;
       }
 
+      // Re-resolve URL for the UI immediately
+      if (data && data.banner_path) {
+          data.banner_path = await resolveStorageUrl(data.banner_path, 'assets');
+      }
+
       console.log(`[AUDIT] Drop created`, insertPayload);
       return { data: data as Drop, error };
     },
 
     update: async (id: string, updates: Partial<Drop>) => {
-      const { data, error } = await supabase.from('drops').update(updates).eq('id', id).select().single();
-      console.log(`[AUDIT] Drop ${id} updated`, updates);
+      const cleanUpdates = { ...updates };
+      // Clean path if present
+      if (cleanUpdates.banner_path) {
+          cleanUpdates.banner_path = cleanStorageUrl(cleanUpdates.banner_path, 'assets');
+      }
+
+      const { data, error } = await supabase.from('drops').update(cleanUpdates).eq('id', id).select().single();
+      
+      // Re-resolve URL for UI
+      if (data && data.banner_path) {
+          data.banner_path = await resolveStorageUrl(data.banner_path, 'assets');
+      }
+
+      console.log(`[AUDIT] Drop ${id} updated`, cleanUpdates);
       return { data: data as Drop, error };
     },
 
@@ -361,8 +446,18 @@ export const AdminService = {
   // --- Stamps (Real DB) ---
   stamps: {
       list: async (): Promise<ListResponse<Stamp>> => {
-          const { data, count, error } = await supabase.from('stamps').select('*', { count: 'exact' });
-          return { data: (data as Stamp[]) || [], count: count || 0, error };
+          const { data, count, error } = await supabase.from('stamps').select('*', { count: 'exact' }).order('created_at', { ascending: false });
+          
+          if (data) {
+              // Parallel resolve of all art paths
+              const resolvedData = await Promise.all(data.map(async (s: Stamp) => ({
+                  ...s,
+                  art_path: await resolveStorageUrl(s.art_path, 'stamps')
+              })));
+              return { data: resolvedData, count: count || 0, error };
+          }
+
+          return { data: [], count: 0, error };
       },
       
       create: async (payload: any) => {
@@ -373,19 +468,20 @@ export const AdminService = {
               ...rest,
               // Move custom ID string to external_id if present (e.g. 'stp_123')
               external_id: (id && typeof id === 'string' && !/^\d+$/.test(id)) ? id : payload.external_id,
-              // Use provided artist_name or fallback to artist_id or default to prevent null constraint violation
+              // Use provided artist_name or fallback to artist_id or default
               artist_name: payload.artist_name ?? payload.artist_id ?? 'Pidgey Studios',
               artist_id: payload.artist_id,
               // Ensure design_config is saved if present
-              design_config: payload.design_config
+              design_config: payload.design_config,
+              // IMPORTANT: Save CLEAN Path to DB
+              art_path: cleanStorageUrl(payload.art_path, 'stamps')
           };
           
           let { data, error } = await supabase.from('stamps').insert(insertPayload).select().single();
 
-          // SELF-HEALING: If artist_id or design_config columns missing, retry without them
+          // SELF-HEALING
           if (error && error.code === 'PGRST204') {
               console.warn("Schema mismatch: Columns missing on stamps. Retrying insert with stripped payload.");
-              
               const safePayload = {
                   name: insertPayload.name,
                   rarity: insertPayload.rarity,
@@ -393,10 +489,14 @@ export const AdminService = {
                   art_path: insertPayload.art_path,
                   price_eggs: insertPayload.price_eggs
               };
-              
               const retry = await supabase.from('stamps').insert(safePayload).select().single();
               data = retry.data;
               error = retry.error;
+          }
+
+          // Re-resolve URL for immediate UI usage (so image doesn't break)
+          if (data && data.art_path) {
+              data.art_path = await resolveStorageUrl(data.art_path, 'stamps');
           }
 
           return { data, error };
@@ -406,11 +506,14 @@ export const AdminService = {
           // IMPORTANT: Strip 'id' from updates to prevent DB errors (PK cannot be updated)
           const { id: _, ...safeUpdates } = updates as any;
 
+          // Clean URL if updating art
+          if (safeUpdates.art_path) {
+              safeUpdates.art_path = cleanStorageUrl(safeUpdates.art_path, 'stamps');
+          }
+
           let query = supabase.from('stamps').update(safeUpdates);
           
-          // Intelligent lookup:
-          // If ID is a string like "stp_12345", look up by external_id.
-          // If ID is a number or numeric string "123", look up by id (primary key).
+          // Intelligent lookup
           if (typeof id === 'string' && !/^\d+$/.test(id)) {
               query = query.eq('external_id', id);
           } else {
@@ -418,6 +521,12 @@ export const AdminService = {
           }
           
           const { data, error } = await query.select().single();
+          
+          // Re-resolve URL for immediate UI usage
+          if (data && data.art_path) {
+              data.art_path = await resolveStorageUrl(data.art_path, 'stamps');
+          }
+
           return { data: data as Stamp, error };
       },
 
@@ -462,9 +571,7 @@ export const AdminService = {
        return { data: (data as unknown as Broadcast[]) || [], count: count || 0, error };
     },
     create: async (payload: Partial<Broadcast>) => {
-        // Remove draft ID if present, let Supabase generate UUID
         if (payload.id && String(payload.id).startsWith('draft_')) delete payload.id;
-        
         const { data, error } = await supabase.from('broadcasts').insert(payload).select().single();
         return { data: data as Broadcast, error };
     }
@@ -477,9 +584,7 @@ export const AdminService = {
        return { data: (data as unknown as Promo[]) || [], count: count || 0, error };
     },
     create: async (payload: Partial<Promo>) => {
-        // Remove draft ID if present
         if (payload.id && String(payload.id).startsWith('draft_')) delete payload.id;
-        
         const { data, error } = await supabase.from('promos').insert(payload).select().single();
         return { data: data as Promo, error };
     }
@@ -502,31 +607,14 @@ export const AdminService = {
                 return AssetType.IMAGE;
             };
 
-            // Use Promise.all to fetch signed URLs in parallel for performance
+            // Use Promise.all to fetch signed URLs in parallel
             const realAssets: Promise<Asset>[] = rawFiles.map(async (file) => {
-                 // Use the full path (including folders/spaces) exactly as Supabase sees it
                  const filePath = file.fullPath || file.name;
-                 
-                 let finalUrl = '';
-                 
-                 // Strategy: Force Signed URLs. 
-                 // This is the only way to reliably serve files with "Double Slashes", "Spaces", or "Special Chars"
-                 // without the browser normalizing the URL and breaking it.
-                 try {
-                     const { data, error } = await supabase.storage.from(bucket).createSignedUrl(filePath, 3600); // 1 hour expiry
-                     if (error) throw error;
-                     finalUrl = data.signedUrl;
-                 } catch (err) {
-                     console.warn(`Signed URL failed for ${filePath}, attempting public fallback`, err);
-                     // Fallback: Try a standard public URL but manually encode the parts
-                     const encodedPath = filePath.split('/').map(encodeURIComponent).join('/');
-                     const { data } = supabase.storage.from(bucket).getPublicUrl(encodedPath);
-                     finalUrl = data.publicUrl;
-                 }
+                 let finalUrl = await resolveStorageUrl(filePath, bucket);
                  
                  return {
                     id: file.id || filePath, 
-                    name: filePath, // Show full path so we know if it's in a folder
+                    name: filePath, // Show full path
                     url: finalUrl,
                     type: getAssetType(bucket),
                     size_kb: Math.round((file.metadata?.size || 0) / 1024),
@@ -548,11 +636,9 @@ export const AdminService = {
     },
 
     upload: async (file: File, bucket: string, folder?: string) => {
-        // Sanitize filename to prevent future issues
         const fileExt = file.name.split('.').pop();
         const cleanName = file.name.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
         const rawFileName = `${Date.now()}_${cleanName}.${fileExt}`;
-        // Prepend folder if provided
         const fileName = folder ? `${folder}/${rawFileName}` : rawFileName;
         
         try {
@@ -563,12 +649,12 @@ export const AdminService = {
             if (error) throw error;
 
             // Get Signed URL immediately
-            const { data: urlData } = await supabase.storage.from(bucket).createSignedUrl(fileName, 3600);
+            const signedUrl = await resolveStorageUrl(fileName, bucket);
             
             const newAsset: Asset = {
-                id: data.path, // path acts as ID
+                id: data.path, 
                 name: fileName,
-                url: urlData?.signedUrl || '',
+                url: signedUrl,
                 type: bucket === 'stamps' ? AssetType.STAMP_ART : AssetType.IMAGE,
                 size_kb: Math.round(file.size / 1024),
                 tags: ['new', bucket],
@@ -585,7 +671,6 @@ export const AdminService = {
 
     uploadBase64: async (base64Data: string, bucket: string, folder?: string) => {
         try {
-            // Convert base64 to Blob
             const byteCharacters = atob(base64Data);
             const byteNumbers = new Array(byteCharacters.length);
             for (let i = 0; i < byteCharacters.length; i++) {
@@ -595,7 +680,6 @@ export const AdminService = {
             const blob = new Blob([byteArray], { type: 'image/png' });
 
             const rawFileName = `gen_ai_${Date.now()}.png`;
-            // Prepend folder if provided
             const fileName = folder ? `${folder}/${rawFileName}` : rawFileName;
             
             const { data, error } = await supabase.storage
@@ -605,12 +689,12 @@ export const AdminService = {
             if (error) throw error;
 
              // Get Signed URL immediately
-            const { data: urlData } = await supabase.storage.from(bucket).createSignedUrl(fileName, 3600);
+            const signedUrl = await resolveStorageUrl(fileName, bucket);
             
             return { 
                 data: {
-                    url: urlData?.signedUrl || '',
-                    path: data.path
+                    url: signedUrl,
+                    path: data.path // The internal path for DB storage
                 },
                 error: null 
             };
@@ -641,7 +725,7 @@ export const AdminService = {
                 .from('tickets')
                 .select('id, subject, priority, status')
                 .eq('status', 'open')
-                .limit(50); // Increased limit for smarter context
+                .limit(50); 
 
             // 2. Real Drops
             const { data: activeDrops } = await supabase
@@ -691,7 +775,7 @@ export const AdminService = {
       }
   },
 
-  // --- System Health (Real Backend Integration) ---
+  // --- System Health ---
   health: {
       getSystem: async () => {
           try {
@@ -740,7 +824,7 @@ export const AdminService = {
     }
   },
   
-  // --- Flight Path (Deep Lifecycle) ---
+  // --- Flight Path ---
   flightPath: {
       search: async (query: string): Promise<DeliveryJourney[]> => {
           const q = query.toLowerCase();
@@ -753,7 +837,7 @@ export const AdminService = {
 
       syncSmtpGo: async (apiKey: string): Promise<DeliveryJourney[]> => {
           console.log(`[SMTP2GO] Syncing logs with key: ${apiKey.substring(0, 4)}...`);
-          // Mock sync logic retained for Flight Path as it connects to external API
+          // Mock sync logic
           const newJourney: DeliveryJourney = {
               message_id: 'smtp_new_1',
               recipient: 'found.via.api@example.com',
