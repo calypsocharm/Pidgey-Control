@@ -37,8 +37,10 @@ export const DesignationModal: React.FC<DesignationModalProps> = ({
             <div className="bg-pidgey-panel border border-pidgey-border rounded-2xl w-full max-w-4xl shadow-2xl overflow-hidden flex flex-col md:flex-row h-[600px] animate-in zoom-in-95 duration-200">
                 {/* Left: Preview */}
                 <div className="w-full md:w-1/3 bg-pidgey-dark p-8 flex items-center justify-center border-b md:border-b-0 md:border-r border-pidgey-border relative flex-col gap-4">
-                    <div className="relative w-full aspect-[3/4] bg-pidgey-panel rounded-xl flex items-center justify-center shadow-2xl border-4 border-dotted border-pidgey-border">
-                        <img src={stamp.art_path} className="w-full h-full object-contain p-4" />
+                    <div className="relative w-full aspect-[3/4] bg-white rounded-sm flex items-center justify-center shadow-2xl border-[6px] border-dotted border-pidgey-dark p-1">
+                        <div className="w-full h-full bg-slate-100 flex items-center justify-center relative overflow-hidden">
+                             <img src={stamp.art_path} className="w-full h-full object-cover" />
+                        </div>
                         {/* Overlay Stats */}
                         <div className="absolute bottom-2 left-2 right-2 bg-black/60 backdrop-blur rounded p-2 text-center">
                             <div className="text-white font-bold text-sm">{stamp.name}</div>

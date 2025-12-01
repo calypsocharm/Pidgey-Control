@@ -1,80 +1,12 @@
 
 import React, { useState } from 'react';
-import { Bird, CheckCircle, XCircle, Clock, Sparkles, ArrowRight, Trash2, Image as ImageIcon, AlertTriangle, ExternalLink, Save, Tag, Egg, Box, MapPin } from 'lucide-react';
+import { Bird, CheckCircle, XCircle, Clock, Sparkles } from 'lucide-react';
 import { useJarvis } from '../JarvisContext';
 import { AdminService } from '../services/adminService';
-import { CreationDraft, StampRarity, StampStatus, DropStatus, BroadcastStatus } from '../types';
-import { Link, useNavigate } from 'react-router-dom';
+import { CreationDraft, StampRarity, StampStatus, DropStatus } from '../types';
+import { useNavigate } from 'react-router-dom';
 import { generateFormContent } from '../services/geminiService';
-
-// --- Style Helpers (For rendering Stamp previews correctly) ---
-const getMaterialBackground = (material: string) => {
-    switch (material) {
-        case 'gold': return 'linear-gradient(135deg, #bf953f, #fcf6ba, #b38728, #fbf5b7, #aa771c)';
-        case 'silver': return 'linear-gradient(135deg, #e0e0e0, #ffffff, #a0a0a0, #ffffff, #c0c0c0)';
-        case 'neon': return 'linear-gradient(135deg, #ff00cc, #333399)';
-        case 'holo': return 'linear-gradient(135deg, #ff0000, #ff7f00, #ffff00, #00ff00, #0000ff, #4b0082, #9400d3)';
-        default: return 'white';
-    }
-};
-
-const getStampStyle = (config: any, bg: string) => {
-    // Default fallback if config is missing
-    const effectiveConfig = config?.border ? config : {
-        border: { enabled: true, style: 'perforated', thickness: 12, radius: 4, color: '#e2e8f0', material: 'none', glowIntensity: 0, innerThickness: 0 }
-    };
-    
-    const b = effectiveConfig.border;
-    if (!b || !b.enabled) return { borderRadius: '8px', overflow: 'hidden' };
-    
-    const base: React.CSSProperties = { 
-        borderRadius: `${b.radius}px`,
-        boxSizing: 'border-box',
-        position: 'relative'
-    };
-    
-    // Perforated Logic (Inverse Dot Trick)
-    if (b.style === 'perforated') {
-        const matBg = b.material && b.material !== 'none' ? getMaterialBackground(b.material) : b.color;
-        
-        // Scale thickness for preview
-        const thickness = Math.max(3, b.thickness / 2.5); 
-        const padding = Math.max(3, thickness / 2 + 1.5);
-        
-        return {
-            ...base,
-            background: matBg,
-            // The border matches the container BG (bg) to look like holes.
-            border: `${thickness}px dotted ${bg}`, 
-            // CRITICAL FIX: padding-box stops the background at the padding edge
-            // allowing the dots (border) to be drawn over the gap, creating holes
-            backgroundClip: 'padding-box', 
-            padding: `${padding}px`,
-            filter: b.glowIntensity > 0 ? `drop-shadow(0 0 ${b.glowIntensity/4}px ${b.glowColor})` : 'none',
-        };
-    }
-    
-    // Solid/Standard Logic
-    const matBg = b.material && b.material !== 'none' ? getMaterialBackground(b.material) : b.color;
-    const thickness = Math.max(2, b.thickness / 2.5);
-
-    if (b.style !== 'solid') {
-         return {
-             ...base,
-             border: `${thickness}px ${b.style} ${b.color}`,
-             background: 'transparent', 
-             padding: 0,
-             boxShadow: b.glowIntensity > 0 ? `0 0 ${b.glowIntensity/3}px ${b.glowColor}` : 'none',
-         };
-    }
-
-    return {
-        ...base,
-        background: matBg,
-        padding: `${thickness}px`,
-        boxShadow: b.glowIntensity > 0 ? `0 0 ${b.glowIntensity/3}px ${b.glowColor}` : 'none',
-    };
-};
+import { ApprovalModal } from './creations/ApprovalModal';
 
 // Helper to remove keys not present in the allowed list
 const sanitizeData = (data: any, allowedKeys: string[]) => {
@@ -124,6 +56,7 @@ export const PidgeyCreations = () => {
             initialData.rarity = initialData.rarity || StampRarity.COMMON;
             initialData.collection = initialData.collection || 'General';
             initialData.status = StampStatus.DRAFT; // Default to draft for Inventory
+            initialData.artist_id = initialData.artist_id || 'Pidgey Studios';
         } else if (draft.type === 'drop') {
             initialData.status = DropStatus.DRAFT;
             initialData.egg_price = initialData.egg_price || 1;
@@ -244,17 +177,6 @@ export const PidgeyCreations = () => {
         }
     };
 
-    const getDestinationHint = (type: string) => {
-        switch(type) {
-            case 'stamp': return 'Stamp Inventory (Status: Draft) → Needs Designation';
-            case 'drop': return 'Drops List (Status: Draft) → Needs Stamp Selection';
-            case 'broadcast': return 'Broadcasts List (Status: Draft) → Needs Scheduling';
-            case 'promo': return 'Promos List (Status: Draft)';
-            case 'member': return 'Members Directory (Status: Active)';
-            default: return 'Database';
-        }
-    };
-
     return (
         <div className="space-y-8 relative">
             <div className="flex justify-between items-center">
@@ -309,28 +231,16 @@ export const PidgeyCreations = () => {
                                 {/* Image Preview for Stamps */}
                                 {draft.type === 'stamp' && draft.data.art_path && (
                                     <div className="mb-5 bg-pidgey-dark rounded-2xl h-64 w-full flex items-center justify-center border border-pidgey-border relative overflow-hidden shadow-inner p-4">
-                                        {/* Render with Custom Style */}
                                         <div 
-                                            className="aspect-[3/4] h-full flex items-center justify-center relative transition-all shadow-xl"
-                                            style={getStampStyle(draft.data.design_config, 'var(--pidgey-dark)')}
+                                            className="aspect-[3/4] h-full flex items-center justify-center relative transition-all shadow-xl rounded-lg overflow-hidden bg-pidgey-panel"
                                         >
-                                             <div className="w-full h-full rounded overflow-hidden flex items-center justify-center relative" style={{
-                                                borderRadius: draft.data.design_config?.border ? `${Math.max(2, draft.data.design_config.border.radius - (draft.data.design_config.border.thickness / 2.5))}px` : '4px',
-                                                backgroundColor: '#1e293b', 
-                                                border: draft.data.design_config?.border?.innerThickness > 0 ? `${draft.data.design_config.border.innerThickness}px solid ${draft.data.design_config.border.innerColor}` : 'none',
-                                                boxSizing: 'border-box'
-                                            }}>
-                                                <img 
-                                                    src={draft.data.art_path} 
-                                                    className="w-full h-full object-cover" 
-                                                    style={draft.data.design_config?.art ? {
-                                                        transform: `scale(${draft.data.design_config.art.scale}) translate(${draft.data.design_config.art.x}px, ${draft.data.design_config.art.y}px)`
-                                                    } : {}}
-                                                    onError={(e) => {
-                                                        (e.target as HTMLImageElement).src = 'https://via.placeholder.com/300x400?text=Image+Load+Error';
-                                                    }}
-                                                />
-                                            </div>
+                                             <img 
+                                                 src={draft.data.art_path} 
+                                                 className="w-full h-full object-cover" 
+                                                 onError={(e) => {
+                                                     (e.target as HTMLImageElement).src = 'https://via.placeholder.com/300x400?text=Image+Load+Error';
+                                                 }}
+                                             />
                                         </div>
                                     </div>
                                 )}
@@ -366,172 +276,16 @@ export const PidgeyCreations = () => {
                 </div>
             )}
 
-            {/* --- APPROVAL MODAL --- */}
-            {selectedDraft && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in duration-200">
-                    <div className="bg-pidgey-panel border border-pidgey-border rounded-3xl w-full max-w-2xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden animate-in zoom-in-95 duration-200 ring-1 ring-white/10">
-                        {/* Header */}
-                        <div className="p-6 border-b border-pidgey-border flex justify-between items-center bg-pidgey-dark/30">
-                            <div>
-                                <h2 className="text-xl font-bold flex items-center gap-3 text-pidgey-text">
-                                    <div className="p-1.5 bg-pidgey-accent/20 rounded-lg text-pidgey-accent"><Sparkles size={18} /></div>
-                                    Finalize {selectedDraft.type}
-                                    <button 
-                                        onClick={handlePidgeyFill}
-                                        disabled={isFilling}
-                                        className="text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 text-pidgey-accent bg-pidgey-accent/10 hover:bg-pidgey-accent/20 px-3 py-1.5 rounded-full transition ml-2 border border-pidgey-accent/30"
-                                    >
-                                        <Sparkles size={10} className={isFilling ? "animate-spin" : ""} />
-                                        Auto-Fill
-                                    </button>
-                                </h2>
-                                <p className="text-xs text-pidgey-muted mt-1 ml-10">Review attributes before saving.</p>
-                            </div>
-                            <button onClick={() => setSelectedDraft(null)} className="p-2 hover:bg-pidgey-dark rounded-full text-pidgey-muted hover:text-pidgey-text transition"><XCircle size={24}/></button>
-                        </div>
-
-                        {/* Content */}
-                        <div className="flex-1 overflow-y-auto p-8 space-y-8 bg-pidgey-panel">
-                            
-                            {/* STAMP EDITOR */}
-                            {selectedDraft.type === 'stamp' && (
-                                <div className="flex gap-8">
-                                    {/* Left: Preview */}
-                                    <div className="w-1/3 flex items-center justify-center bg-pidgey-dark rounded-2xl border border-pidgey-border p-6">
-                                         <div 
-                                             className="aspect-[3/4] w-full flex items-center justify-center relative shadow-2xl transition-all"
-                                             style={getStampStyle(formData.design_config, 'var(--pidgey-dark)')}
-                                         >
-                                             <div className="w-full h-full rounded overflow-hidden flex items-center justify-center relative" style={{
-                                                 borderRadius: formData.design_config?.border ? `${Math.max(2, formData.design_config.border.radius - (formData.design_config.border.thickness / 2.5))}px` : '4px',
-                                                 backgroundColor: '#1e293b',
-                                                 border: formData.design_config?.border?.innerThickness > 0 ? `${formData.design_config.border.innerThickness}px solid ${formData.design_config.border.innerColor}` : 'none',
-                                                 boxSizing: 'border-box'
-                                             }}>
-                                                 <img src={formData.art_path} className="w-full h-full object-cover" 
-                                                    style={formData.design_config?.art ? {
-                                                        transform: `scale(${formData.design_config.art.scale}) translate(${formData.design_config.art.x}px, ${formData.design_config.art.y}px)`
-                                                    } : {}}
-                                                    onError={(e) => (e.target as HTMLImageElement).src='https://via.placeholder.com/300x400'}
-                                                 />
-                                             </div>
-                                             <div className="absolute bottom-3 right-3 px-3 py-1 bg-black/60 backdrop-blur-md rounded-lg text-[10px] text-white uppercase font-bold tracking-wider shadow-sm">{formData.rarity}</div>
-                                         </div>
-                                    </div>
-                                    
-                                    {/* Right: Form */}
-                                    <div className="flex-1 space-y-5">
-                                        <div>
-                                            <label className="block text-xs font-bold text-pidgey-muted uppercase mb-1.5 ml-1">Official Name</label>
-                                            <input 
-                                                className="w-full bg-pidgey-dark border border-pidgey-border rounded-xl p-3.5 text-pidgey-text focus:border-pidgey-accent focus:bg-pidgey-dark/50 outline-none font-bold text-lg transition-all"
-                                                value={formData.name || ''}
-                                                onChange={e => setFormData({...formData, name: e.target.value})}
-                                            />
-                                        </div>
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <div>
-                                                <label className="block text-xs font-bold text-pidgey-muted uppercase mb-1.5 ml-1">Rarity</label>
-                                                <select 
-                                                    className="w-full bg-pidgey-dark border border-pidgey-border rounded-xl p-3 text-pidgey-text text-sm focus:border-pidgey-accent outline-none appearance-none"
-                                                    value={formData.rarity}
-                                                    onChange={e => setFormData({...formData, rarity: e.target.value})}
-                                                >
-                                                    {Object.values(StampRarity).map(r => <option key={r} value={r}>{r}</option>)}
-                                                </select>
-                                            </div>
-                                            <div>
-                                                <label className="block text-xs font-bold text-pidgey-muted uppercase mb-1.5 ml-1">Collection</label>
-                                                <input 
-                                                    className="w-full bg-pidgey-dark border border-pidgey-border rounded-xl p-3 text-pidgey-text text-sm focus:border-pidgey-accent outline-none"
-                                                    value={formData.collection || ''}
-                                                    onChange={e => setFormData({...formData, collection: e.target.value})}
-                                                    placeholder="e.g. Origins"
-                                                />
-                                            </div>
-                                        </div>
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <div>
-                                                <label className="block text-xs font-bold text-pidgey-muted uppercase mb-1.5 ml-1">Price (Eggs)</label>
-                                                <input 
-                                                    type="number"
-                                                    className="w-full bg-pidgey-dark border border-pidgey-border rounded-xl p-3 text-pidgey-text text-sm focus:border-pidgey-accent outline-none"
-                                                    value={formData.price_eggs}
-                                                    onChange={e => setFormData({...formData, price_eggs: parseInt(e.target.value)})}
-                                                />
-                                            </div>
-                                            <div>
-                                                <label className="block text-xs font-bold text-pidgey-muted uppercase mb-1.5 ml-1">Supply</label>
-                                                <input 
-                                                    type="number"
-                                                    className="w-full bg-pidgey-dark border border-pidgey-border rounded-xl p-3 text-pidgey-text text-sm focus:border-pidgey-accent outline-none"
-                                                    value={formData.edition_count}
-                                                    onChange={e => setFormData({...formData, edition_count: parseInt(e.target.value)})}
-                                                />
-                                            </div>
-                                        </div>
-                                        
-                                        <div className="flex items-center gap-3 p-4 bg-pidgey-dark border border-pidgey-border rounded-xl cursor-pointer hover:bg-pidgey-dark/50 transition">
-                                            <input 
-                                                type="checkbox"
-                                                id="dropOnly"
-                                                checked={formData.is_drop_only}
-                                                onChange={e => setFormData({...formData, is_drop_only: e.target.checked})}
-                                                className="w-5 h-5 rounded border-pidgey-border bg-pidgey-panel text-pidgey-accent focus:ring-offset-0 focus:ring-pidgey-accent"
-                                            />
-                                            <label htmlFor="dropOnly" className="text-xs font-bold text-pidgey-muted cursor-pointer uppercase tracking-wide select-none">Drop Exclusive (Not in Store)</label>
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* GENERIC EDITOR (Drops/Broadcasts/Promos) */}
-                            {selectedDraft.type !== 'stamp' && (
-                                <div className="space-y-6">
-                                    {Object.entries(formData).map(([key, value]) => {
-                                        if (key === 'design_config' || key === 'id' || key === 'created_at' || typeof value === 'object') return null;
-                                        return (
-                                            <div key={key}>
-                                                <label className="block text-xs font-bold text-pidgey-muted uppercase mb-1.5 ml-1">{key.replace(/_/g, ' ')}</label>
-                                                <input 
-                                                    className="w-full bg-pidgey-dark border border-pidgey-border rounded-xl p-3.5 text-pidgey-text focus:border-pidgey-accent outline-none transition-all"
-                                                    value={value as string}
-                                                    onChange={e => setFormData({...formData, [key]: e.target.value})}
-                                                />
-                                            </div>
-                                        );
-                                    })}
-                                     <div className="p-4 bg-pidgey-dark rounded-2xl border border-dashed border-pidgey-border text-center text-pidgey-muted text-sm">
-                                         <p>Additional configuration for <strong>{selectedDraft.type}</strong> is available in the edit screen after saving.</p>
-                                     </div>
-                                </div>
-                            )}
-
-                        </div>
-
-                        {/* Footer */}
-                        <div className="p-6 border-t border-pidgey-border bg-pidgey-dark/30 flex flex-col gap-4">
-                            <div className="flex items-center gap-2 text-xs text-pidgey-muted bg-pidgey-dark/50 p-2 rounded-lg border border-pidgey-border">
-                                <MapPin size={14} className="text-pidgey-accent" />
-                                <span className="font-bold uppercase tracking-wide text-[10px]">Destination:</span>
-                                <span className="text-pidgey-text font-mono">{getDestinationHint(selectedDraft.type)}</span>
-                            </div>
-                            
-                            <div className="flex justify-end gap-3">
-                                <button onClick={() => setSelectedDraft(null)} className="px-6 py-3 rounded-xl text-sm font-bold text-pidgey-muted hover:text-white hover:bg-white/5 transition">Cancel</button>
-                                <button 
-                                    onClick={handleFinalizeSave}
-                                    disabled={isSaving}
-                                    className="px-8 py-3 bg-pidgey-accent text-pidgey-dark font-bold rounded-xl hover:bg-teal-300 transition flex items-center gap-2 shadow-lg shadow-teal-500/20 disabled:opacity-50"
-                                >
-                                    {isSaving ? <Sparkles className="animate-spin" size={18}/> : <Save size={18} />} 
-                                    {isSaving ? 'Saving...' : 'Finalize & Save'}
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
+            <ApprovalModal 
+                draft={selectedDraft}
+                formData={formData}
+                setFormData={setFormData}
+                onClose={() => setSelectedDraft(null)}
+                onSave={handleFinalizeSave}
+                onPidgeyFill={handlePidgeyFill}
+                isFilling={isFilling}
+                isSaving={isSaving}
+            />
         </div>
     );
 };

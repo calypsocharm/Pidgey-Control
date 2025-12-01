@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { FileText, Download, Trash2, Sparkles, Plus, AlertTriangle } from 'lucide-react';
 import { Asset, AssetType } from '../../types';
@@ -15,10 +16,16 @@ interface FileCardProps {
 export const FileCard: React.FC<FileCardProps> = ({ file, onAutoTag, isTagging, onDelete, isSafeMode, onSelect, isStamp }) => {
     const [imgError, setImgError] = useState(false);
 
+    // Apply stamp style if isStamp is true
+    // Logic: White container, Dotted border colored to match the parent background (pidgey-dark)
+    const containerClasses = isStamp 
+        ? "aspect-[3/4] bg-white border-[6px] border-dotted border-pidgey-dark p-1 rounded-sm"
+        : "aspect-[3/4] bg-pidgey-dark p-4";
+
     return (
-        <div className={`group bg-pidgey-panel ${isStamp ? 'border-4 border-dotted border-pidgey-border' : 'border border-pidgey-border'} rounded-xl overflow-hidden hover:border-pidgey-muted transition-colors relative`}>
-            {/* Standardized Aspect Ratio [3/4] for all items (oblong) */}
-            <div className="aspect-[3/4] bg-pidgey-dark relative overflow-hidden flex items-center justify-center p-4">
+        <div className={`group bg-pidgey-panel ${isStamp ? 'border border-pidgey-border' : 'border border-pidgey-border'} rounded-xl overflow-hidden hover:border-pidgey-muted transition-colors relative`}>
+            {/* Image Container */}
+            <div className={`relative overflow-hidden flex items-center justify-center ${containerClasses}`}>
                 {file.type === AssetType.IMAGE || file.type === AssetType.STAMP_ART || file.type === AssetType.ICON || file.type === AssetType.CARD_TEMPLATE ? (
                     imgError ? (
                         <div className="flex flex-col items-center text-red-400">
@@ -26,19 +33,21 @@ export const FileCard: React.FC<FileCardProps> = ({ file, onAutoTag, isTagging, 
                              <span className="text-[10px] font-bold uppercase">Broken Link</span>
                         </div>
                     ) : (
-                        <img 
-                            src={file.url} 
-                            alt={file.name} 
-                            className="w-full h-full object-contain transition-transform group-hover:scale-105" 
-                            onError={() => setImgError(true)}
-                        />
+                        <div className={`w-full h-full flex items-center justify-center overflow-hidden ${isStamp ? 'bg-slate-100' : ''}`}>
+                            <img 
+                                src={file.url} 
+                                alt={file.name} 
+                                className={`w-full h-full object-contain transition-transform group-hover:scale-105 ${isStamp ? 'object-cover' : ''}`}
+                                onError={() => setImgError(true)}
+                            />
+                        </div>
                     )
                 ) : (
                     <FileText size={48} className="text-pidgey-muted opacity-20" />
                 )}
                 
                 {/* Overlay */}
-                <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-wrap items-center justify-center gap-2 p-2 content-center">
+                <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-wrap items-center justify-center gap-2 p-2 content-center z-10">
                     {/* Auto Tag */}
                     <button 
                         onClick={() => onAutoTag(file)}

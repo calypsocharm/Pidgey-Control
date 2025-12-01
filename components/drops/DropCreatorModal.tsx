@@ -172,8 +172,10 @@ export const DropCreatorModal: React.FC<DropCreatorModalProps> = ({
                                         >
                                             <X size={12} />
                                         </button>
-                                        <div className="aspect-[3/4] bg-pidgey-panel rounded-lg mb-2 flex items-center justify-center overflow-hidden">
-                                            <img src={stamp.art_path} className="w-full h-full object-contain p-2" />
+                                        <div className="aspect-[3/4] bg-white rounded-sm mb-2 flex items-center justify-center overflow-hidden border-[4px] border-dotted border-pidgey-dark p-0.5">
+                                            <div className="w-full h-full bg-slate-100 flex items-center justify-center relative overflow-hidden">
+                                                <img src={stamp.art_path} className="w-full h-full object-cover" />
+                                            </div>
                                         </div>
                                         <div className="font-bold text-xs truncate text-white">{stamp.name}</div>
                                         <div className={`text-[9px] px-1.5 rounded uppercase inline-block mt-1 ${getRarityColor(stamp.rarity as StampRarity)}`}>
@@ -212,10 +214,12 @@ export const DropCreatorModal: React.FC<DropCreatorModalProps> = ({
                                                             : 'bg-pidgey-dark border-pidgey-border hover:border-pidgey-muted'
                                                         }`}
                                                     >
-                                                        <div className="aspect-[3/4] bg-black/20 rounded-lg mb-2 flex items-center justify-center overflow-hidden relative">
-                                                            <img src={stamp.art_path} className="w-full h-full object-contain p-2" />
+                                                        <div className="aspect-[3/4] bg-white rounded-sm mb-2 flex items-center justify-center overflow-hidden relative border-[4px] border-dotted border-pidgey-dark p-0.5">
+                                                            <div className="w-full h-full bg-slate-100 flex items-center justify-center relative overflow-hidden">
+                                                                <img src={stamp.art_path} className="w-full h-full object-cover" />
+                                                            </div>
                                                             {isSelected && (
-                                                                <div className="absolute inset-0 bg-pidgey-accent/20 flex items-center justify-center">
+                                                                <div className="absolute inset-0 bg-pidgey-accent/20 flex items-center justify-center z-10">
                                                                     <CheckCircle2 className="text-pidgey-accent bg-pidgey-dark rounded-full shadow-lg" size={24} />
                                                                 </div>
                                                             )}
